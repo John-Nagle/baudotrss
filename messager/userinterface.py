@@ -265,6 +265,8 @@ class simpleui(object) :
 		else :												# if no keyboard
 			if initialcmd is None :							# if no initial command
 				initialcmd = "N"							# read news, forever.
+		if self.verbose :									# if debug output desired
+			print("Serial port: " + repr(self.tty.ser))		# print serial port settings
 		while True :
 			try: 
 				self.endabort()								# end abort if necessary
