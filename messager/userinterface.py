@@ -148,11 +148,14 @@ class uireadtask(threading.Thread) :
 		while True :
 			s = tty.readbaudot()							# get some input
 			for b in s :
-				if b == '\0' and not self.ifreading :		# if received a NULL when not reading
-					if verbose :
-						print("BREAK detected")				# treat as a break
-					tty.flushOutput()						# Flush whatever was printing
-					break									# ignore remaining input
+				if not self.ifreading :						# if not reading
+					if b == '\0' :							# if received a NULL when not reading
+						if verbose :
+							print("BREAK detected")			# treat as a break
+						tty.flushOutput()					# Flush whatever was printing
+						break								# ignore remaining input
+					else :									# non-break while printing
+						continue							# usually means half-duplex echoing back
 				if b == '\0' :								# if null
 					shift = tty.outputshift					# don't echo, use old shift state
 				else :										# otherwise echo
@@ -215,6 +218,7 @@ class simpleui(object) :
 			try: 
 				self.tty.doprint(s)							# output prompt
 				self.tty.writebaudotch(shift,None)			# get into appropriate shift
+				self.draininput()							# drain any input
 				self.readtask.acceptinginput(True)			# now accepting input
 				while True :								# accumulate input
 					if len(instr) >= maxchars :				# if accumulated enough
