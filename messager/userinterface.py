@@ -131,10 +131,15 @@ def testsend(ui) :
 #
 class uireadtask(threading.Thread) :
 
+	instate = (PRINTING, FLUSHING, READING)	= range(3)		# input state
+	inidlesecs = 0.3										# 500ms of idle means flushing is done
+
 	def __init__(self, owner) :
 		threading.Thread.__init__(self)						# initialize base class
 		self.owner = owner									# BaudotTTY object to use
-		self.ifreading = False								# nobody listening yet.
+		self.instate = self.PRINTING						# initially in PRINTING state
+		self.statelock = threading.Lock()					# lock on read state
+		self.lastread = time.clock()						# time last char read
 
 	#
 	#	Read thread.  Stops anything else going on, echoes input.
@@ -145,10 +150,14 @@ class uireadtask(threading.Thread) :
 	def run(self) :											# the thread
 		tty = self.owner.tty								# the TTY object
 		verbose = self.owner.verbose						# verbosity
+		halfduplex = self.owner.halfduplex					# true if half duplex
+		if halfduplex :										# in half duplex
+			shift = tty.outputshift							# get shift from output side to start.
 		while True :
 			s = tty.readbaudot()							# get some input
 			for b in s :
-				if not self.ifreading :						# if not reading
+				istate = self.flushcheck()					# do flushing check
+				if istate != self.READING :					# if not reading
 					if b == '\0' :							# if received a NULL when not reading
 						if verbose :
 							print("BREAK detected")			# treat as a break
@@ -159,7 +168,14 @@ class uireadtask(threading.Thread) :
 				if b == '\0' :								# if null
 					shift = tty.outputshift					# don't echo, use old shift state
 				else :										# otherwise echo
-					shift = tty.writebaudotch(b, None)		# write to tty
+					if halfduplex :
+						#	Update shift in half duplex.  This needs to be synched better between input and output.
+						if b == baudot.Baudot.LTRS :		# if LTRS
+							shift = baudot.Baudot.LTRS		# now in LTRS
+						elif b == baudot.Baudot.FIGS :		# if FIGS
+							shift = baudot.Baudot.FIGS		# now in FIGS
+					else :
+						shift = tty.writebaudotch(b, None)	# write to tty
 				ch = tty.conv.chToASCII(b, shift)			# convert to ASCII
 				if verbose :
 					print("Read %s" % (repr(ch),))			# ***TEMP***
@@ -167,7 +183,25 @@ class uireadtask(threading.Thread) :
 					self.owner.inqueue.put(ch)				# send character to input
 
 	def acceptinginput(self, ifreading) :					# is somebody paying attention to the input?
-		self.ifreading = ifreading
+		with self.statelock :								# lock
+			if ifreading :									# if switching to reading
+				if self.instate == self.PRINTING :			# if in PRINTING state
+					self.instate = self.FLUSHING			# go to FLUSHING state
+					if self.owner.verbose :
+						print("Start flushing input.")		# Input now being ignored, to allow half duplex.
+			else :											# if switching to writing
+				self.instate = self.PRINTING				# back to PRINTING state
+
+	def flushcheck(self) :									# for half duplex, note when output has flushed
+		now = time.clock()									# time we read this character
+		with self.statelock :
+			if self.instate == self.FLUSHING :				# if in FLUSHING state
+				if now - self.lastread > self.inidlesecs :	# if no input for quiet period
+					self.instate = self.READING 			# go to READING state
+					if self.owner.verbose :
+						print("Stop flushing input.")		# will start paying attention to input again.
+			self.lastread = now								# update timestamp
+		return(self.instate)								# return input state
 
 #
 #	Class simpleui  -- simple user interface for news, weather, etc.
@@ -177,7 +211,7 @@ class simpleui(object) :
 	kidletimeout = 30										# seconds to wait before powerdown
 	kextraltrs = 2											# send two LTRS at end of line.
 
-	def __init__(self, newsfeeds, port, baud, lf, keyboard, ohdontforgetkey = None, verbose = False) :
+	def __init__(self, newsfeeds, port, baud, lf, keyboard, halfduplex, ohdontforgetkey = None, verbose = False) :
 		self.verbose = verbose								# set verbose mode
 		self.tty = baudottty.BaudotTTY()					# get a TTY object
 		self.uilock = threading.Lock()						# lock object
@@ -187,6 +221,7 @@ class simpleui(object) :
 		self.baud = baud									# set baud rate
 		self.lf = lf										# line feeds to send
 		self.keyboard = keyboard							# true if keyboard present
+		self.halfduplex = halfduplex						# true if half-duplex (don't echo)
 		self.ohdontforgetkey = ohdontforgetkey				# key for OhDontForget SMS sending
 		self.newsfeeds = newsfeeds							# URL list from which to obtain news via RSS
 		self.feed = newsfeed.Newsfeeds(self.newsfeeds, self.verbose)	# create a news feed object 
@@ -323,6 +358,7 @@ def main() :
 	opts.add_option('-v','--verbose', help="Verbose mode", action="store_true", default=False, dest="verbose")
 	####opts.add_option('-n','--notty', help="Run without Teletype hardware", action="store_false", default=False, dest="notty")
 	opts.add_option('-k','--keyboard', help="Keyboard present", action="store_true", default=False, dest="keyboard")
+	opts.add_option('-x','--halfduplex', help="Half-duplex (\"loop\")", action="store_true", default=False, dest="halfduplex")
 	opts.add_option('-c','--cmd', help="Initial command",dest="cmd",metavar="COMMAND")
 	opts.add_option('-m','--markread', help="Mark all stories as read", action="store_true", default=False, dest="markread")
 	opts.add_option('-b','--baud', help="Baud rate", dest="baud", default=45.45, metavar="BAUD")
@@ -348,7 +384,7 @@ def main() :
 			print("Accepting commands from Teletype keyboard")
 		else :
 			print("No keyboard present; will print latest news.")
-	ui = simpleui(feedurls, port, baud, lf, keyboard, options.ohdontforgetkey, verbose)
+	ui = simpleui(feedurls, port, baud, lf, keyboard, options.halfduplex, options.ohdontforgetkey, verbose)
 	if options.markread :
 		ui.markallasread()									# if requested, mark all news as read
 	ui.runui(options.cmd)									# run the test
