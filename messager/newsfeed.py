@@ -126,10 +126,10 @@ class Newsfeed(object) :
 					(oldetag, strtime(oldmodified), d.etag, strtime(d.modified)))	# note
 
 		###	***Exception handling needs improvement***
-		except IOError,message :						# if trouble
+		except IOError as message :						# if trouble
 			self.errmsg = "No news because " + str(message) + "."
 			self.logwarning(self.errmsg)				# log
-		except AttributeError, message :				# if trouble
+		except AttributeError as message :				# if trouble
 			self.errmsg = "No news because " + str(message) + "."
 			self.logwarning(self.errmsg)				# log
 

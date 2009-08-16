@@ -9,7 +9,7 @@
 #	Simplistic weather report retrieval via FTP.
 # 
 #
-import urllib
+import urllib2
 import re
 #
 baseurl = "ftp://tgftp.nws.noaa.gov/data/forecasts/city/"	# base URL to read
@@ -20,12 +20,12 @@ def getweatherreport(statecode, cityname):
 	statecode = statecode.lower()				# force state code to lower case
 	url = baseurl + statecode + '/' + cityname + '.txt'	# build URL to open
 	try:
-		opener = urllib.urlopen(url)			# URL opener object 
+		opener = urllib2.urlopen(url)			# URL opener object 
 		s = opener.read()						# read entire contents
 		opener.close()							# close
 		####print(s)								# ***TEMP***
 		return(s)								# return result
-	except IOError,message :					# if trouble
+	except IOError as message :					# if trouble
 		s = "Unable to get forecast for " + cityname + "(" + statecode + "): " + str(message)
 		return(s)
 

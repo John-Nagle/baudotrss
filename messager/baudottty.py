@@ -1,7 +1,7 @@
 #
 #	baudotty --  Support for Baudot TTY, Model 15, etc.
 #
-#	Python 2.6 or later.
+#	Requires PySerial 2.5 or later for 5-bit serial support.
 #
 #	License: LGPL.
 #
@@ -10,11 +10,11 @@
 #
 #
 import serial								# PySerial
-import pyserialpatches						# Patch to allow 1.5 stop bits.
 import baudot								# baudot charset info
 import re
 import threading
 import time
+assert(serial.VERSION.split('.') >= ['2','4'])	# ***TEMP*** should be 2.5, but PySerial has wrong version string.
 #
 #	Constants
 #
@@ -54,10 +54,10 @@ class BaudotTTY(object) :
 	def open(self, port, baud=45.45) :
 		if self.ser :
 			self.close()							# close old port instance
-		self.ser = pyserialpatches.BaudotSerial(port, baudrate=baud, 
+		self.ser = serial.Serial(port, baudrate=baud, 
 				bytesize=serial.FIVEBITS, 
 				parity=serial.PARITY_NONE, 
-				stopbits=serial.STOPBITS_ONE5)
+				stopbits=serial.STOPBITS_ONE_POINT_FIVE)
 		self.clear()								# reset to start state
 		self.conv = baudot.Baudot()					# get Baudot conversion object
 		self.ser.setDTR(1)							# DTR to 1, so we can use DTR as a +12 supply 

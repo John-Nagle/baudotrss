@@ -11,7 +11,6 @@
 #	February, 2009
 #
 import serial								# PySerial
-import pyserialpatches
 import baudot								# baudot charset info
 import threading
 import baudottty
@@ -22,6 +21,8 @@ import time
 import re
 import Queue
 import optparse
+import sys
+assert(sys.version_info >= (2,6))				# Requires Python 2.6 or later.
 #
 #	Globals
 #
@@ -282,7 +283,7 @@ class simpleui(object) :
 				self.readtask.acceptinginput(False)			# no longer accepting input
 				raise										# reraise Empty
 
-			except KeyboardInterrupt, message :				# if aborted by BREAK
+			except KeyboardInterrupt as message :			# if aborted by BREAK
 				print("Exception: " + str(message))
 				self.tty.doprint("\n...BREAK...\n\n")		# show BREAK
 				self.readtask.acceptinginput(False)			# no longer accepting input
@@ -292,7 +293,7 @@ class simpleui(object) :
 	def endabort(self) :									# end any output abort
 		try :
 			self.tty.doprint('')							# print nothing to absorb abort event
-		except KeyboardInterrupt, message :					# if aborted
+		except KeyboardInterrupt as message :				# if aborted
 			pass											# ignore
 
 		
@@ -339,7 +340,7 @@ class simpleui(object) :
 				else:
 					continue								# ask again
 
-			except KeyboardInterrupt, message :				# if aborted
+			except KeyboardInterrupt as message :			# if aborted
 				if self.verbose :
 					print("Exception: " + str(message))
 				self.tty.doprint("\n*** BREAK ***\n\n")		# show BREAK
