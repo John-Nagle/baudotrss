@@ -7,9 +7,8 @@
 #	Polls multiple RSS feeds, returns new items.
 #
 #	Usage: create a Newsfeeds object, and provide it with a list
-#	of RSS URLs.  Call "getitem" to get the next item from some feed.
-#	When no items are available, None is returned.  Then wait 1-2 minutes
-#	and call "getitem" again.
+#	of RSS URLs.  Run via "start" in feedmanager.  Get items
+#	using queue in feedmanager.
 #
 #	The data returned is pure text, not HTML.  This is intended for
 #	applications where the output is a printing device displaying
@@ -23,19 +22,16 @@ sys.path.append("./feedparser")							# in subdir
 import re
 import feedparser
 import time
+import feedmanager
+import Queue
 #
-#	strtime -- time as a string.  Accepts "None"
+#	Constants
 #
-def strtime(t) :
-	if t is None :										# None case
-		return("(None)")
-	return(time.asctime(t))								# normal case
+kpollinterval = 90.0									# poll this often
 #
 #	class Newsfeed  --  one news feed
 #
-class Newsfeed(object) :							
-	MONTHS = ["ZERO","January", "February", "March", "April", "May", "June", 
-		"July", "August", "September", "October", "November"]
+class Newsfeed(feedmanager.Feed) :							
 
 	#	FeedParser's list of acceptable HTML elements.
 	standard_acceptable_elements = ['a', 'abbr', 'acronym', 'address', 'area', 'b', 'big',
@@ -49,9 +45,11 @@ class Newsfeed(object) :
 
 	#	Our list. We drop almost all markup, then truncate at the first remaining tag.
 	acceptable_elements = ['a','p','br']				# severely censor HTML markup
-
+	#
+	#	Called from outside the thread
+	#
 	def __init__(self, url, verbose=False) :
-		self.verbose = verbose							# set verbose
+		feedmanager.Feed.__init__(self, "NEWS", verbose)
 		self.setfeedurl(url)							# set feed URL
 		self.expirationsecs = 60*60*24*2				# expire after not seen for 2 days
 		####print(feedparser._HTMLSanitizer.acceptable_elements)	# ***TEMP***
@@ -61,40 +59,74 @@ class Newsfeed(object) :
 
 	def setfeedurl(self, url) :							# set new feed URL
 		self.url = url									# save URL
-		self.hdrtitle = "???"							# no header title yet
+		self.hdrtitle = None							# no header title yet
 		self.hdrdate = None								# no header date yet
-		self.availitems = []							# no items queued for read
 		self.etag = None								# no feed sequence id yet
 		self.modified = None							# no last-modified timestamp yet
-		self.idpreviouslyread = {}						# prevously read item IDs 
-		self.textpreviouslyread = {}					# previously read story text
-		self.errmsg = None								# no error message
-
-	def getitem(self) :									# get one item
-		if len(self.availitems) > 0 :					# if items available
-			return(self.availitems.pop(0))				# return first item on list
-		self.fetchitems()								# empty, try to fetch more items
-		if len(self.availitems) > 0 :					# if items available
-			return(self.availitems.pop(0))				# return first item on list
-		if self.errmsg :								# if error available
-			s = self.errmsg	+ '\n'						# return it
-			self.errmsg = None							# use it up
-			return(("ERROR", s))						# report error item
-		return(None)									# no items
+		self.itemqueued = {}							# item has been queued for printing
+		self.markingallasread = True					# marking all stories as read.
 
 	def markallasread(self) :							# mark all stories as read
-		self.availitems = []							# clear list of items
-		while self.getitem() :							# use up all items
-			self.availitems = []						# clear list of items
-			pass
+		try: 
+			while True :								# drain
+				self.inqueue.get_nowait()				# get input, if any
+		except Queue.Empty:								# when empty
+			pass										# done
+		if self.verbose :
+			print("News feed queue emptied.")
+		self.markingallasread = True					# mark all as read for one cycle			
+
+	def unmarkallasread(self) :							# clear items already read
+		self.markingallasread = False					# do not mark all as read
+		self.itemqueued = {}							# no item has been queued for printing
+		self.modified = None							# no last-modified date
+		self.etag = None								# no previous RSS read
+		self.forcepoll()								# force an immediate poll
 
 	def gettitle(self) :								# get feed title 
-		return(self.hdrtitle)	 
-			
+		if self.hdrtitle :
+			return(self.hdrtitle)
+		else:
+			return(self.url)							# use URL if unable to read
+
+	def getpollinterval(self) :							# how often to poll
+		return(kpollinterval)
+
+	def itemdone(self, item) :							# done with this item - item printed
+		pass											# we don't keep persistent state of news printed
+
+	def formattext(self, msgitem) :						# format a msg item, long form
+		emsg = msgitem.errmsg
+		date_string = time.strftime("%B %d, %I:%M %p", msgitem.msgtime)	# formatted time
+		#	Format for printing as display message
+		if emsg :										# short format for errors
+			s = "%s: %s\n" % (date_string, emsg)
+			return(s)									# return with error msg
+		#	Long form display
+		s = msgitem.subject + '\n(' + date_string + ')\n' + msgitem.body + '\n\n' # Add CR at end
+		return(s)										# no error
+
+	def summarytext(self, msgitem) :
+		emsg = msgitem.errmsg
+		#	Format for printing as short message
+		if emsg :										# short format for errors
+			s = "%s: %s\n" % (msgitem.msgtime, emsg)
+			return(s)									# return with error msg
+		date_string = time.strftime("%B %d, %I:%M %p", msgitem.msgtime)	# formatted time
+		fmt = "FROM %s  TIME %s: %s"
+		s = fmt % (msgitem.msgfrom, date_string, msgitem.body[:40])
+		return(s)										# no error
+
+
+	#
+	#	Called from within the thread
+	#		
 	def fetchitems(self) :								# fetch more items from feed source
 		try :											# try fetching
 			now = time.time()							# timestamp
 			d = feedparser.parse(self.url,etag=self.etag,modified=self.modified)	# fetch from URL
+			if d is None or not hasattr(d,"status") :	# if network failure
+				raise IOError("of network or news source failure")
 			if d.status == 304 :						# if no new items
 				if self.verbose :						# if verbose
 					print("Feed polled, no changes.")
@@ -107,31 +139,22 @@ class Newsfeed(object) :
 			oldmodified = self.modified					# save old timestamp for diagnosis
 			self.etag = d.etag							# save position in feed for next time
 			self.modified = d.modified					# save last update timestamp for next time
-			self.hdrtitle = d.feed.title + '\n'			# feed title
+			self.hdrtitle = d.feed.title				# feed title
 			hdrdescription = d.feed.description			# feed description
 			hdrdate = "" #### d.feed.date				# date as string
-			didentry = False							# found something worth doing
 			#	Process all entries in feed just read.
-			#	Ignore items that were present in the previous read of this feed.
+			#	Ignore items that were previously seen
 			for entry in d.entries :					# get items from feed
-				entrymsg = self.doentry(entry, now)		# do this entry
-				if entrymsg :							# if new item to print
-					self.availitems.append(entrymsg)	# save this item
-					didentry = True						# found some entry worth doing
+				msgitem = self.doentry(entry, now)		# do this entry
+				if msgitem :							# if new item to print
+					self.inqueue.put(msgitem)			# save this item
+			self.markingallasread = False				# if marking all as read, stop doing that.
 			#	Purge stories not seen in a while.
-			self.purgeolditems(now-self.expirationsecs,self.idpreviouslyread)	# purge old previousy read stories when expired
-			self.purgeolditems(now-self.expirationsecs,self.textpreviouslyread)	# purge old previousy read stories when expired
-			if not didentry :							# if found nothing to do
-				self.logwarning('Feed stamps changed from ("%s",%s) to ("%s",%s) but no new content.' % 
-					(oldetag, strtime(oldmodified), d.etag, strtime(d.modified)))	# note
+			self.purgeolditems(now-self.expirationsecs, self.itemqueued)	# purge old previousy read stories when expired
 
-		###	***Exception handling needs improvement***
-		except IOError as message :						# if trouble
-			self.errmsg = "No news because " + str(message) + "."
-			self.logwarning(self.errmsg)				# log
-		except AttributeError as message :				# if trouble
-			self.errmsg = "No news because " + str(message) + "."
-			self.logwarning(self.errmsg)				# log
+		except (IOError, AttributeError) as message :	# if trouble
+			errmsg = 'No "%s" news because %s.' % (self.gettitle(), str(message))
+			self.logerror(errmsg)						# log
 
 	def purgeolditems(self,expirationtime,dict) :			# purge old items already seen and printed
 		#	We have to do this the hard way, because stories can appear in the feed, be preempted
@@ -153,29 +176,22 @@ class Newsfeed(object) :
 		description = self.cleandescription(entry.description)
 		date = entry.date								# date of entry
 		dateparsed = entry.date_parsed					# date parsed
-			####print("Date parsed: " + str(dateparsed))
+		msgitem = feedmanager.FeedItem(self, self.gettitle(), dateparsed, dateparsed, title, description)
 		#	Have we read this item already?  Check for duplicates.
 		#	If either the ID or the text is duplicated, it's a duplicate.
 		#	Sometimes IDs change when the text does not, because of server-side problems.
-		seen = id in self.idpreviouslyread				# true if already seen
-		self.idpreviouslyread[id] = now					# keep keys of stories read
-		if seen :										# if already read
-			if self.verbose :
-				print("Old feed item: (%s)  %s" % (id,title.encode('ascii','replace')	))			# Note news item
-			return(None)								# don't do it again
-		textinfo = (title, description)					# check for duplicate text; feed source botches this
-		seen = textinfo in self.textpreviouslyread		# already seen?
-		self.textpreviouslyread[textinfo] = now			# keep text of stories read
+		seen = msgitem.digest in self.itemqueued 		# true if already seen
+		if self.markingallasread :						# if marking all as read
+			seen = True									# pretend we've seen this story
+		self.itemqueued[msgitem.digest] = now			# keep keys of stories read
 		if seen :										# if already seen
 			if self.verbose :
-				print("Old feed item: (%s)  %s" % (id,entry.title.encode('ascii','replace')))			# Note news item
-			return(False)
+				print("Old feed item: (%s)  %s" % (id, title.encode('ascii','replace')))			# Note news item
+			return(None)
 		#	New news item, prepare for display
-		date_string = self.MONTHS[dateparsed.tm_mon] + " " + str(dateparsed.tm_mday)
-		entrymsg = date_string + ": " + title + "\n" + description + '\n\n' # Add CR at end
 		if self.verbose :
-			print("New feed item: (%s)  %s" % (id,title.encode('ascii','replace')))			# Note news item
-		return((self.hdrtitle,entrymsg))
+			print("New feed item: (%s)  %s" % (id,title.encode('ascii','replace')))		# Note news item
+		return(msgitem)									# build and return new item
 
 	def cleandescription(self, s)	:			# clean up description for printing
 		#	Clean up news item.  Should do this via feedparser utilities.
@@ -195,33 +211,14 @@ class Newsfeed(object) :
 		####print("After clean:\n" + s.encode('ascii','replace'))				# ***TEMP***
 		return(s.strip())						# remove any lead/trail white space
 
-	def logwarning(self, msg) :							# log warning message
-		print('WARNING: Feed "%s": %s' % (self.url, msg))	# just print for now
+	def logwarning(self, errmsg) :							# log warning message
+		print('WARNING: Feed "%s": %s' % (self.url, errmsg))# just print for now
+
+	def logerror(self, errmsg) :							# log warning message
+		print('ERROR: Feed "%s": %s' % (self.url, errmsg))# just print for now
+		if self.inqueue.empty () :							# only add error if empty.  Will repeat if problem
+			dateparsed = time,localtime()					# error is now
+			newitem = feedmanager.FeedItem(self, self.gettitle(), dateparsed, dateparsed, None, None, errmsg)
+			self.inqueue.put(newitem)						# add to output queue
+
 									
-#
-#	class Newsfeeds  --  handle multiple news feeds
-#
-class Newsfeeds(object) :
-	def __init__(self, feedlist, verbose=False) :
-		self.verbose = verbose							# set verbose
-		self.feeds = []									# list of feeds
-		self.lasttitle = None							# last title returned
-		for feedurl in feedlist :
-			self.feeds.append(Newsfeed(feedurl,verbose))	# add this feed
-
-	def getitem(self) :									# get one item, from some feed
-		for feed in self.feeds :						# try all feeds
-			item = feed.getitem()						# get one item
-			if item :									# if got an item
-				return(item)							# return it
-		return(None)									# no new items available
-
-	def setlasttitleprinted(self,title) :
-		self.lasttitle = title							# set last title printed
-
-	def getlasttitleprinted(self) :						# get last title printed
-		return(self.lasttitle)
-
-	def markallasread(self) :							# mark all stories as read
-		for feed in self.feeds :						# try all feeds
-			feed.markallasread()						# mark all as read
