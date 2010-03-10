@@ -24,10 +24,28 @@ import feedparser
 import time
 import feedmanager
 import Queue
+import rfc822											# for date parsing
+import calendar											# for date parsing
 #
 #	Constants
 #
 kpollinterval = 90.0									# poll this often
+#
+#	Support functions
+#
+#	Patch feedparser to support time zone information in RFC2822 time stamps.
+#
+def RFC2822dateparser(aDateString):
+	"""parse a RFC2822 date, including time zone: 'Sun, 28 Feb 2010 11:57:48 -0500'"""
+	dateinfo = rfc822.parsedate_tz(aDateString)			# parse date
+	if dateinfo is None :								# if none, fail
+		return(None)									# next parser gets a chance
+	utcstamp = rfc822.mktime_tz(dateinfo)				# convert to timestamp format
+	utcdate = time.gmtime(utcstamp)						# convert back to time tuple, but now in UT
+	####print("RFC2822dateparser: in: %s   dateinfo: %s  out: %s" % (repr(aDateString), repr(dateinfo), repr(utcdate))) ## ***TEMP***
+	return(utcdate)										# feedparser wants UT time
+
+feedparser.registerDateHandler(RFC2822dateparser)		# register above conversion with feedparser
 #
 #	class Newsfeed  --  one news feed
 #
@@ -44,12 +62,29 @@ class Newsfeed(feedmanager.Feed) :
       'thead', 'tr', 'tt', 'u', 'ul', 'var']
 
 	#	Our list. We drop almost all markup, then truncate at the first remaining tag.
-	acceptable_elements = ['a','p','br']				# severely censor HTML markup
+	acceptable_elements = ['a','p','br']		# severely censor HTML markup
+	#
+	kdescriptionrewrites = [					# rewrite rules for cleaning up news items
+		(re.compile(r'<div.*'),''),				# remove Reuters crap at end ***TEMP***
+		(re.compile(r'<a.*'),''),				# remove Reuters crap at end ***TEMP***
+		(re.compile(r'&mdash;'),'-'),			# convert HTML escape for mdash
+		(re.compile(r'&amp;'),'&'),				# convert HTML escape for ampersand
+		(re.compile(r'&\w+;'),'?'),				# any other special chars become question mark
+		(re.compile(r'&\#\w+;'),'?'),			# get numeric escapes, too.
+		(re.compile(r'<p>'),'\n\n'),			# convert breaks to newlines.
+		(re.compile(r'</p>'),' '),				# remove closing paragraph tag
+		(re.compile(r'<br>'),'\n\n'),			# convert breaks to newlines.
+		(re.compile(r'<br/>'),'\n\n'),			# convert breaks to newlines.
+		(re.compile(r'<[^>]*>'),' '),			# remove any remaining markup
+		(re.compile(r'[\t\r ]+'),' '),			# all whitespace becomes a single space
+		(re.compile(r'\n[ ]+'),'\n'),			# remove whitespace at end of line
+		(re.compile(r'\n\n\n+'),'\n\n')]		# never more than two newlines
+
 	#
 	#	Called from outside the thread
 	#
-	def __init__(self, url, verbose=False) :
-		feedmanager.Feed.__init__(self, "NEWS", verbose)
+	def __init__(self, url, logger) :
+		feedmanager.Feed.__init__(self, "NEWS", logger)
 		self.setfeedurl(url)							# set feed URL
 		self.expirationsecs = 60*60*24*2				# expire after not seen for 2 days
 		####print(feedparser._HTMLSanitizer.acceptable_elements)	# ***TEMP***
@@ -72,8 +107,7 @@ class Newsfeed(feedmanager.Feed) :
 				self.inqueue.get_nowait()				# get input, if any
 		except Queue.Empty:								# when empty
 			pass										# done
-		if self.verbose :
-			print("News feed queue emptied.")
+		self.logger.info("News feed queue emptied.")
 		self.markingallasread = True					# mark all as read for one cycle			
 
 	def unmarkallasread(self) :							# clear items already read
@@ -98,6 +132,8 @@ class Newsfeed(feedmanager.Feed) :
 	def formattext(self, msgitem) :						# format a msg item, long form
 		emsg = msgitem.errmsg
 		date_string = time.strftime("%B %d, %I:%M %p", msgitem.msgtime)	# formatted time
+		date_string = re.sub(r'\s0',' ',date_string)	# remove lead zeroes within date and time
+
 		#	Format for printing as display message
 		if emsg :										# short format for errors
 			s = "%s: %s\n" % (date_string, emsg)
@@ -128,17 +164,15 @@ class Newsfeed(feedmanager.Feed) :
 			if d is None or not hasattr(d,"status") :	# if network failure
 				raise IOError("of network or news source failure")
 			if d.status == 304 :						# if no new items
-				if self.verbose :						# if verbose
-					print("Feed polled, no changes.")
+				self.logger.debug("Feed polled, no changes.")
 				return									# nothing to do
-			if self.verbose :							# if verbose
-				print("Read feed: %d entries, status %s" % (len(d.entries), d.status))
+			self.logger.debug("Read feed: %d entries, status %s" % (len(d.entries), d.status))
 			if d.status != 200 :						# if bad status
 				raise IOError("of connection error No. %d" % (d.status,))
 			oldetag = self.etag							# save old etag for diagnosis
 			oldmodified = self.modified					# save old timestamp for diagnosis
 			self.etag = d.etag							# save position in feed for next time
-			self.modified = d.modified					# save last update timestamp for next time
+			self.modified = getattr(d,"modified",None)	# save last update timestamp, if any, for next time
 			self.hdrtitle = d.feed.title				# feed title
 			hdrdescription = d.feed.description			# feed description
 			hdrdate = "" #### d.feed.date				# date as string
@@ -153,6 +187,7 @@ class Newsfeed(feedmanager.Feed) :
 			self.purgeolditems(now-self.expirationsecs, self.itemqueued)	# purge old previousy read stories when expired
 
 		except (IOError, AttributeError) as message :	# if trouble
+			self.logger.exception(message)				# debug
 			errmsg = 'No "%s" news because %s.' % (self.gettitle(), str(message))
 			self.logerror(errmsg)						# log
 
@@ -165,17 +200,17 @@ class Newsfeed(feedmanager.Feed) :
 				expired.append(elt)						# note expired
 		for elt in expired :							# for all expired items
 			del(dict[elt])								# delete from dict
-			if self.verbose :
-				print("Expired: %s" % (elt,))			# debug
+			self.logger.debug("Expired: %s" % (elt,))			# debug
 
 	def doentry(self,entry, now)	:					# do one feed entry
 		title = entry.title								# title of entry
-		id = entry.id									# ID of entry
+		id = getattr(entry,"id", None)					# ID of entry
 		description = entry.description					# description of entry
 		#	Clean up news item.  Should do this via feedparser utilities.
 		description = self.cleandescription(entry.description)
 		date = entry.date								# date of entry
 		dateparsed = entry.date_parsed					# date parsed
+		dateparsed = time.localtime(calendar.timegm(dateparsed))	# convert to local time.  Feedparser times are UT
 		msgitem = feedmanager.FeedItem(self, self.gettitle(), dateparsed, dateparsed, title, description)
 		#	Have we read this item already?  Check for duplicates.
 		#	If either the ID or the text is duplicated, it's a duplicate.
@@ -185,31 +220,21 @@ class Newsfeed(feedmanager.Feed) :
 			seen = True									# pretend we've seen this story
 		self.itemqueued[msgitem.digest] = now			# keep keys of stories read
 		if seen :										# if already seen
-			if self.verbose :
-				print("Old feed item: (%s)  %s" % (id, title.encode('ascii','replace')))			# Note news item
+			self.logger.debug("Old feed item: (%s)  %s" % (id, title.encode('ascii','replace')))			# Note news item
+			####self.logger.debug("Old feed item date: %s   %s" % (repr(date), repr(dateparsed)))	# ***TEMP***
 			return(None)
 		#	New news item, prepare for display
-		if self.verbose :
-			print("New feed item: (%s)  %s" % (id,title.encode('ascii','replace')))		# Note news item
+		self.logger.debug("New feed item: (%s)  %s" % (id,title.encode('ascii','replace')))		# Note news item
+		####self.logger.debug("New feed item date: %s   %s" % (repr(date), repr(dateparsed)))	# ***TEMP***
 		return(msgitem)									# build and return new item
 
-	def cleandescription(self, s)	:			# clean up description for printing
+	def cleandescription(self, s)	:						# clean up description (item body) for printing
 		#	Clean up news item.  Should do this via feedparser utilities.
 		####print("Before clean:\n" + s.encode('ascii','replace'))			# ***TEMP***
-		s = re.sub(r'<div.*','',s)				# remove Reuters crap at end ***TEMP***
-		s = re.sub(r'<a.*','',s)				# remove Reuters crap at end ***TEMP***
-		s = re.sub(r'&mdash;','-',s)			# convert HTML escape for mdash
-		s = re.sub(r'&\w+;','?',s)				# any other special chars become question mark
-		s = re.sub(r'<p>','\n\n',s)				# convert breaks to newlines.
-		s = re.sub(r'</p>',' ',s)				# remove closing paragraph tag
-		s = re.sub(r'<br>','\n\n',s)			# convert breaks to newlines.
-		s = re.sub(r'<br/>','\n\n',s)			# convert breaks to newlines.
-		s = re.sub(r'<[^>]*>',' ',s)			# remove any remaining markup
-		s = re.sub(r'[\t\r ]+',' ',s)			# all whitespace becomes a single space
-		s = re.sub(r'\n[ ]+','\n',s)			# remove whitespace at end of line
-		s = re.sub(r'\n\n\n+','\n\n',s)			# never more than two newlines
+		for (pattern, rep) in self.kdescriptionrewrites :	# apply all rewrite rules
+			s = pattern.sub(rep, s)							# in sequence
 		####print("After clean:\n" + s.encode('ascii','replace'))				# ***TEMP***
-		return(s.strip())						# remove any lead/trail white space
+		return(s.strip())									# remove any lead/trail white space
 
 	def logwarning(self, errmsg) :							# log warning message
 		print('WARNING: Feed "%s": %s' % (self.url, errmsg))# just print for now
@@ -217,7 +242,7 @@ class Newsfeed(feedmanager.Feed) :
 	def logerror(self, errmsg) :							# log warning message
 		print('ERROR: Feed "%s": %s' % (self.url, errmsg))# just print for now
 		if self.inqueue.empty () :							# only add error if empty.  Will repeat if problem
-			dateparsed = time,localtime()					# error is now
+			dateparsed = time.localtime()					# error is now
 			newitem = feedmanager.FeedItem(self, self.gettitle(), dateparsed, dateparsed, None, None, errmsg)
 			self.inqueue.put(newitem)						# add to output queue
 

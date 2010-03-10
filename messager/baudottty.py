@@ -147,18 +147,20 @@ class BaudotTTY(object) :
 	#
 	#	Internal use only; must be locked first.
 	#
-	def _writeeol(self,needcr) :
+	def _writeeol(self) :
 		sout = bytearray()
-		if needcr :
-			sout.append(baudot.Baudot.CR)				# if need CR
-		#	Add LF before CR if so configured.
-		#	Add extra LTRS at end of line, to allow for physical carriage movement.
-		if self.eolextralf :							# if machine needs LF on CR
-			sout.append(baudot.Baudot.LF)				# send an LF before CR
-		if self.eolextraltrs > 0:						# if carriage return
-			for i in range(self.eolextraltrs) :			# send extra LTRS
-				sout.append(baudot.Baudot.LTRS)			# to allow time for CR to occur
-			self.outputshift = baudot.Baudot.LTRS		# now in LTRS shift
+		if self.outputcol == 0 :
+			sout.append(baudot.Baudot.LF)				# Newline at start of line, just send LF
+		else :											# not at beginning of line
+			sout.append(baudot.Baudot.CR)				# need CR
+			#	Add LF after CR if so configured.
+			if self.eolextralf :						# if machine needs LF on CR
+				sout.append(baudot.Baudot.LF)			# send an LF before CR
+			#	Add extra LTRS at end of line, to allow for physical carriage movement.
+			if self.eolextraltrs > 0  :					# if carriage return delay needed
+				for i in range(self.eolextraltrs) :		# send extra LTRS
+					sout.append(baudot.Baudot.LTRS)		# to allow time for CR to occur
+				self.outputshift = baudot.Baudot.LTRS	# now in LTRS shift
 		if sout != '':
 			self._writeser(str(sout))					# write EOL sequence
 		self.outputcol = 0								# now at beginning of line
@@ -194,14 +196,13 @@ class BaudotTTY(object) :
 			ch = bytes(ch)								# force to type bytes
 			self.motor(True)							# turn on motor if needed
 			if self.outputcol is None :					# if position unknown
-				self._writeeol(True)					# force a CR
+				self._writeeol()						# force a CR
 			#	Do shift if needed
 			if shift != None :							# if shift matters
 				if shift != self.outputshift :			# if shift needed
 					self._writeser(shift)				# do shift
 					self.outputshift = shift			# update shift state
-			self._writeser(ch)							# write binary to tty
-			#	Update state after sending char
+			#	Update shift state after sending char
 			if ch == baudot.Baudot.LTRS :				# if LTRS
 				self.outputshift = baudot.Baudot.LTRS	# now in LTRS
 			elif ch == baudot.Baudot.FIGS :				# if FIGS
@@ -209,12 +210,14 @@ class BaudotTTY(object) :
 			elif ch == baudot.Baudot.SPACE and self.outputshift == baudot.Baudot.FIGS : # if possible unshift on space
 				self.outputshift = None					# now unknown
 			#	Handle line position update	
-			if ch == baudot.Baudot.CR  :				# if CR processing needed
-				self._writeeol(False)					# do end of line processing, without another CR
-			elif self.conv.printableBaudot(ch,self.outputshift) :	# spacing char
-				self.outputcol += 1	
-			if self.outputcol >= self.outputcolmax:		# if CR processing needed
-				self._writeeol(True)					# force a CR
+			if ch == baudot.Baudot.CR  :				# if CR was requested
+				self._writeeol()						# do end of line processing
+			else :
+				self._writeser(ch)						# write requested Baudot character to device
+				if self.conv.printableBaudot(ch,self.outputshift) :	# spacing char
+					self.outputcol += 1	
+				if self.outputcol >= self.outputcolmax:	# if CR processing needed
+					self._writeeol()					# force a CR
 			####print("%s  Col.%3d  Shift: %s" % (repr(ch),self.outputcol,repr(self.outputshift)))			# ***TEMP***
 			finalshift = self.outputshift				# get final shift state	
 		return(finalshift)								# return final shift state, unlocking

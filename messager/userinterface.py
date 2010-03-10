@@ -20,12 +20,16 @@ import baudottty
 import weatherreport						# weather report
 import newsfeed
 import smsfeed
+import aethericmsgfeed
 import feedmanager
 import time
 import re
 import Queue
 import optparse
 import traceback
+import logging
+import warnings
+import BeautifulSoup
 
 #
 #	Globals
@@ -36,6 +40,9 @@ defaultfeedurls = [reutersfeedurl]								# default feeds to use
 
 klongprompt =	"\nType N for news, W for weather, S to send, O for off, CR to wait: "
 kshortprompt =	"\nN, W, S, O, or CR: "
+kcutmark = "\n\n--- CUT HERE ---\n\n"				# cut paper here
+keject = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"		# paper eject sequence
+
 kerrbells = "\a \a \a"								# ring 3 slow bells on error
 kreadtimeout = 1.0									# read timeout - makes read abort (control-C) work on Linux.
 
@@ -106,8 +113,7 @@ def sendviasms(ui) :
 	if sendtext is None :							# if nothing to send
 		return
 	sendtext = formatforsms(sendtext)				# apply upper/lower case SMS conventions
-	if ui.verbose :									# if printing
-		print("Sending to %s: %s" % (sendto, sendtext))	# ***TEMP***
+	ui.logger.info("Sending to %s: %s" % (sendto, sendtext))	# logging
 	reply = ui.smsmsgfeed.sendSMS(sendto, sendtext)
 	if reply is None :								# if no error
 		reply = "DONE"								# although Google Voice says OK even when number not validated
@@ -157,14 +163,17 @@ class uireadtask(threading.Thread) :
 	def run(self) :
 		try :
 			self.dorun()									# do run thread
+		except serial.SerialException as message :			# trouble
+			self.owner.logger.error("Connection to Teletype failed: " + str(message))
+			self.owner.inqueue.put(message)					# put exception on output queue to indicate abort
+			return											# read task ends
 		except Exception as message :						# trouble
-			print("Internal error in read thread: " + str(message))
-			traceback.print_exc()							# traceback
-			sys.exit()										# fails ***TEMP*** need to abort main thread
+			self.owner.logger.exception("Internal error in read thread: " + str(message))
+			self.owner.inqueue.put(message)					# put exception on output queue to indicate abort
+			return											# read task ends
 
 	def dorun(self) :										# the thread
 		tty = self.owner.tty								# the TTY object
-		verbose = self.owner.verbose						# verbosity
 		halfduplex = self.owner.halfduplex					# true if half duplex
 		if halfduplex :										# in half duplex
 			shift = tty.outputshift							# get shift from output side to start.
@@ -176,13 +185,11 @@ class uireadtask(threading.Thread) :
 				istate = self.flushcheck()					# do flushing check
 				if istate != self.READING :					# if not reading
 					if b == '\0' :							# if received a NULL when not reading
-						if verbose :
-							print("BREAK detected")			# treat as a break
+						self.owner.logger.info("BREAK detected")			# treat as a break
 						tty.flushOutput()					# Flush whatever was printing
 						break								# ignore remaining input
 					else :									# non-break while printing
-						if verbose :						# note ignoring
-							print("Ignoring input.")
+						self.owner.logger.debug("Ignoring input.")
 						continue							# usually means half-duplex echoing back
 				shift = tty.writebaudotch(None, None)		# get current shift state
 				if shift is None :							# if none
@@ -197,8 +204,7 @@ class uireadtask(threading.Thread) :
 					else :
 						shift = tty.writebaudotch(b, shift)	# write to tty in indicated shift state
 				ch = tty.conv.chToASCII(b, shift)			# convert to ASCII
-				if verbose :
-					print("Read %s" % (repr(ch),))			# ***TEMP***
+				self.owner.logger.debug("Read %s" % (repr(ch),))
 				if not (b in [baudot.Baudot.LTRS, baudot.Baudot.FIGS]) : # don't send shifts in ASCII
 					self.owner.inqueue.put(ch)				# send character to input
 		#	Terminated
@@ -209,8 +215,7 @@ class uireadtask(threading.Thread) :
 			if ifreading :									# if switching to reading
 				if self.instate == self.PRINTING :			# if in PRINTING state
 					self.instate = self.FLUSHING			# go to FLUSHING state
-					if self.owner.verbose :
-						print("Start flushing input.")		# Input now being ignored, to allow half duplex.
+					self.owner.logger.debug("Start flushing input.")	# Input now being ignored, to allow half duplex.
 			else :											# if switching to writing
 				self.instate = self.PRINTING				# back to PRINTING state
 
@@ -220,8 +225,7 @@ class uireadtask(threading.Thread) :
 			if self.instate == self.FLUSHING :				# if in FLUSHING state
 				if now - self.lastread > self.inidlesecs :	# if no input for quiet period
 					self.instate = self.READING 			# go to READING state
-					if self.owner.verbose :
-						print("Stop flushing input.")		# will start paying attention to input again.
+					self.owner.logger.debug("Stop flushing input.")		# will start paying attention to input again.
 			self.lastread = now								# update timestamp
 		return(self.instate)								# return input state
 
@@ -235,34 +239,64 @@ class simpleui(object) :
 	kidletimeout = 30										# seconds to wait before powerdown
 	kextraltrs = 2											# send two LTRS at end of line.
 
-	def __init__(self, newsfeeds, port, baud, lf, keyboard, halfduplex, guser, gpass, workdir = ".", verbose = False) :
-		self.verbose = verbose								# set verbose mode
-		self.tty = baudottty.BaudotTTY()					# get a TTY object
-		self.uilock = threading.Lock()						# lock object
-		self.inqueue = Queue.Queue()						# input queue
-		self.readtask = uireadtask(self)					# input task
+	def __init__(self, newsfeeds, port, baud, lf, keyboard, halfduplex, guser, gpass, workdir, format, logger) :
+		self.logger = logger								# use logger
+		self.format = format								# set output format
+		self.guser = guser									# Google Voice user name
+		self.gpass = gpass									# Google Voice password
+		self.smsmsgfeed = None								# no SMS feed yet
 		self.port = port									# set port ID
 		self.baud = baud									# set baud rate
 		self.lf = lf										# line feeds to send
 		self.keyboard = keyboard							# true if keyboard present
 		self.halfduplex = halfduplex						# true if half-duplex (don't echo)
-		self.guser = guser									# Google Voice user name
-		self.gpass = gpass									# Google Voice password
+		self.cutmarks = False								# insert paper cutmarks if true
+		self.needcut = False								# need a cutmark
+		self.needeject = False								# need a page eject
 		self.newsfeeds = newsfeeds							# URL list from which to obtain news via RSS
 		self.workdir = workdir								# store persistent state here 
-		self.smsmsgfeed = None								# no SMS msg feed yet
 		self.itemprinting = None							# ID of what's currently being printed
-		self.feeds = feedmanager.Feeds(self.verbose)		# create a news feed object 
-		for url in newsfeeds :								# for URLs listed
-			self.feeds.addfeed(newsfeed.Newsfeed(url, self.verbose))
+		self.uilock = threading.Lock()						# lock object
+		self.inqueue = Queue.Queue()						# input queue
+		#	SMS feed initialization
 		if guser :											# if have Google Voice account
-			self.smsmsgfeed = smsfeed.SMSfeed(guser, gpass, self.workdir, self.verbose)	# get a SMS feed object
+			if format is None:										# if Aetheric Message mode (fancy headers, SMS replies)
+				self.smsmsgfeed = smsfeed.SMSfeed(guser, gpass, self.workdir, self.logger)	# short form
+			elif format.upper() == "AETHERIC" :				# if Aetheric mode			
+				self.smsmsgfeed = aethericmsgfeed.AethericMessageFeed(guser, gpass, self.workdir, self.logger)	# get a SMS feed object
+				self.cutmarks = True						# add cutmarks
+			else :	
+				print("Unknown --format parameter: %s (allowed values are ['Aetheric'])" % (format,))
+				return										# otherwise fail
+		#	Initialize TTY
+		self.tty = baudottty.BaudotTTY()					# get a TTY object
+		self.readtask = uireadtask(self)					# input task
+		#	Build list of feeds to follow
+		self.feeds = feedmanager.Feeds(self.logger)			# create a news feed object 
+		for url in newsfeeds :								# for URLs listed
+			self.feeds.addfeed(newsfeed.Newsfeed(url, self.logger))
+		if self.smsmsgfeed :
 			self.feeds.addfeed(self.smsmsgfeed)				# make this feed active
+
+	def sendcutmark(self) :									# cut paper here
+		if self.cutmarks :									# if cutmarks enabled
+			if self.needcut :
+				self.tty.doprint(kcutmark)					# send cut mark
+		self.needcut = False								# no cutmark needed
+
+	def sendeject(self) :									# paper eject, sent when printer goes idle
+		if self.cutmarks :									# if cutmarks enabled
+			if self.needeject :								# if printed something
+				self.tty.doprint(kcutmark)					# send cut, then
+				self.tty.doprint(keject)					# send eject
+		self.needeject = False								# no eject needed
 
 	def draininput(self) :									# consume any queued input
 		try: 
 			while True :
 				ch = self.inqueue.get_nowait()				# get input, if any
+				if isinstance(ch, Exception) :				# if error in thread
+					raise ch								# reraise exception here
 		except Queue.Empty:									# if empty
 			return											# done
 
@@ -274,6 +308,8 @@ class simpleui(object) :
 		self.tty.motor(False)								# turn motor off
 		self.draininput()									# drain input
 		ch = self.inqueue.get()								# wait for input, any input
+		if isinstance(ch, Exception) :						# if error in thread
+			raise ch										# reraise exception here
 		self.tty.doprint("\n")								# send CR to turn on motor and wake up
 
 	#
@@ -290,19 +326,23 @@ class simpleui(object) :
 				title = self.itemprinting.gettitle()		# get title
 				s = self.itemprinting.formattext()			# item text
 				errmsg = self.itemprinting.errmsg			# error message if any
+				feedtype = self.itemprinting.feed.feedtype	# feed type
 				title = title.encode('ascii','replace')
 				s = s.encode('ascii','replace')				# force to ASCII for the Teletype
 				if waiting :								# if was waiting
 					tty.doprint("\n\a")						# wake up, ring bell
 					waiting = False							# we have a story to print
 					powerdownstart = None					# not waiting for motor power off
-				#	Print title if it changed
+				#	Need to cut paper here?
+				if title != feed.getlasttitleprinted() or feedtype == "SMS" :	# cut paper for source change or SMS
+					self.needcut = True						# cut paper here
+				self.sendcutmark()							# cut paper here
+				#	Print feed title if it changed
 				if title != feed.getlasttitleprinted() :
 					feed.setlasttitleprinted(title)	# save new title so we can tell if it changed
 					title = baudottty.convertnonbaudot(title)	# convert special chars to plausible equivalents
 					title = baudottty.wordwrap(title)		# word wrap
-					if self.verbose :
-						print("Source: " + title)
+					self.logger.debug("Source: " + title)
 					tty.doprint(title )						# print title
 					if errmsg :
 						tty.doprint(kerrbells)				# ring bells here
@@ -311,24 +351,23 @@ class simpleui(object) :
 				s = baudottty.wordwrap(s)					# word wrap
 				if s[-1] != '\n' :							# end with NL
 					s += '\n'
-				if self.verbose :
-					ssum = re.sub("\s+"," ", self.itemprinting.summarytext()).lstrip()[:80]	# summarize story/msg by truncation
-					print("Printing: %s..." % (ssum,))		# print a bit of the new story
+				ssum = re.sub("\s+"," ", self.itemprinting.summarytext()).lstrip()[:80]	# summarize story/msg by truncation
+				self.logger.info("Printing: %s..." % (ssum,))		# print a bit of the new story
 				tty.doprint(s)								# print item
 				self.itemprinting.itemdone()				# mark item as done
 				self.itemprinting = None					# item has been used up
 				if errmsg is None :							# if no error, get next story immediately
+					self.needeject = True					# note that a page eject is needed on next idle
 					continue								# try to get next story
 			#	No traffic, wait for more to come in
 			if not waiting :
+				self.sendeject()							# eject page if needed
 				tty.doprint("WAITING...")					# indicate wait
 				waiting = True								# waiting with motor off
 				feed.setlasttitleprinted(None)				# forget last title printed; print new title on wakeup
-				if self.verbose :
-					print("No traffic, waiting...")
+				self.logger.info("No traffic, waiting...")
 			if tty.kybdinterrupt :							# if interrupted by BREAK, but not printing
-				if self.verbose :
-					print("Keyboard interrupt")
+				self.logger.info("Keyboard interrupt")
 				return										# done
 			#	Turn off motor after allowing enough time for all queued output.
 			#	The USB serial devices have a huge queue.  We have to wait for it to empty.
@@ -337,8 +376,7 @@ class simpleui(object) :
 				####print("Queued: %d" % (charsleft,))		# ***TEMP***
 				if charsleft <= 0 :							# if done printing
 					tty.motor(False)						# turn off Teletype motor
-					if self.verbose :							# if enough time has elapsed for worst-case queued printing
-						print("Motor turned off.")
+					self.logger.info("Motor turned off.")
 			time.sleep(1)									# wait 1 sec for next cycle
 
 
@@ -359,7 +397,9 @@ class simpleui(object) :
 					if timeout :
 						timeout = timeout + self.tty.outwaitingtime()	# add extra time for printing in progress
 					ch = self.inqueue.get(True, timeout)	# get incoming char (ASCII)
-					if ch == '\r' :							# if end of line
+					if isinstance(ch, Exception) :			# if error in thread
+						raise ch							# reraise exception here
+					elif ch == '\r' :						# if end of line
 						break								# done, return input string
 					elif ch == '\0' :						# if the "delete char" (the blank key)
 						if len(instr) > 0 :					# if have some chars
@@ -389,10 +429,10 @@ class simpleui(object) :
 				return(None)								# prompt failed
 
 
-	def endabort(self, msg="") :							# end any output abort
+	def endcancel(self, msg="") :							# end any output cancellation
 		try :
-			self.tty.doprint(msg)							# print nothing to absorb abort event
-		except baudottty.BaudotKeyboardInterrupt as message :	# if aborted
+			self.tty.doprint(msg)							# print nothing to absorb cancel event
+		except baudottty.BaudotKeyboardInterrupt as message :	# if cancelled
 			pass											# ignore
 
 		
@@ -400,7 +440,7 @@ class simpleui(object) :
 		useshortprompt = False								# use long prompt the first time
 		while True :
 			try: 
-				self.endabort()								# end abort if necessary
+				self.endcancel()							# end cancel if necessary
 				self.draininput()							# use up any queued input
 				try :
 					if initialcmd :							# initial command avilable
@@ -419,8 +459,7 @@ class simpleui(object) :
 					self.waitfortraffic(self.feeds)			# wait for traffic				
 					continue								# and prompt again
 				#	Read a one-letter command.  Handle it.	
-				if self.verbose :
-					print("Command: %s" % (repr(cmd,)))		# done
+				self.logger.info("Command: %s" % (repr(cmd,)))		# done
 				if cmd == 'N' :
 					self.tty.doprint('\n\n')
 					self.feeds.unmarkallasread("NEWS")		# unmark all news, forcing a new display
@@ -442,10 +481,18 @@ class simpleui(object) :
 					continue								# ask again
 
 			except baudottty.BaudotKeyboardInterrupt as message :	# if aborted
-				if self.verbose :
-					print("Break: " + str(message))
-				self.endabort("\n\n")						# show BREAK, ignoring break within break
+				self.logger.info("Break: " + str(message))
+				self.endcancel("\n\n")						# show BREAK, ignoring break within break
 				continue									# ask again
+
+	def abortthreads(self) :									# abort all subordinate threads, called from exception
+		#	Abort feed tasks
+		self.feeds.abort()										# abort all feed tasks
+		#	Abort read task.
+		if self.keyboard :										# if have a read task
+			self.logger.debug("Waiting for read task to complete.")
+			self.readtask.abort()								# abort reading over at read task
+			self.logger.debug("Read task has completed.")
 
 	def runui(self, initialcmd = None) :
 		try :
@@ -456,21 +503,28 @@ class simpleui(object) :
 			else :												# if no keyboard
 				if initialcmd is None :							# if no initial command
 					initialcmd = "N"							# read news, forever.
-			if self.verbose :									# if debug output desired
-				print("Serial port: " + repr(self.tty.ser))		# print serial port settings
+			self.logger.debug("Serial port: " + repr(self.tty.ser))		# print serial port settings
 			self.uiloop(initialcmd)								# run main UI loop
-		except (KeyboardInterrupt, StandardError) as message :	# if trouble
-			print("Internal error, aborting: " + str(message))
-			#	Abort feed tasks
-			self.feeds.abort()									# abort all feed tasks
-			#	Abort read task.
-			if self.keyboard :									# if have a read task
-				if self.verbose :
-					print("Waiting for read task to complete.")
-				self.readtask.abort()							# abort reading over at read task
-				if self.verbose :
-					print("Read task has completed.")
+		except (EOFError, serial.SerialException) as message :			# if trouble
+			self.logger.error("Teletype connection failed, aborting: " + str(message))
+			self.abortthreads()									# abort all threads
+			raise
+		except (KeyboardInterrupt) as message :					# if shutdown
+			self.logger.error("Shutting down: " + str(message))
+			self.abortthreads()									# abort all threads
+			raise
+		except (StandardError) as message :						# if trouble
+			self.logger.exception("Unrecoverable error, aborting: " + str(message))
+			self.abortthreads()									# abort all threads
 			raise												# re-raise exception with other thread exited.
+
+
+#
+#	Suppress deprecation warnings.  We know feedparser and BeautifulSoup need updates.
+#
+warnings.filterwarnings(action='ignore', category=DeprecationWarning, module='BeautifulSoup')
+warnings.filterwarnings(action='ignore', category=DeprecationWarning, module='feedparser')
+
 #
 #	Main program
 #
@@ -478,21 +532,19 @@ def main() :
 	#	Handle command line options
 	opts = optparse.OptionParser()							# get option parse
 	opts.add_option('-v','--verbose', help="Verbose mode", action="store_true", default=False, dest="verbose")
-	####opts.add_option('-n','--notty', help="Run without Teletype hardware", action="store_false", default=False, dest="notty")
+	opts.add_option('-q','--quiet', help="Quiet mode, fewer messages", action="store_true", default=False, dest="quiet")
 	opts.add_option('-k','--keyboard', help="Keyboard present", action="store_true", default=False, dest="keyboard")
 	opts.add_option('-x','--halfduplex', help="Half-duplex (\"loop\")", action="store_true", default=False, dest="halfduplex")
 	opts.add_option('-c','--cmd', help="Initial command",dest="cmd",metavar="COMMAND")
-	####opts.add_option('-m','--markread', help="Mark all stories as read", action="store_true", default=False, dest="markread")
 	opts.add_option('-b','--baud', help="Baud rate", dest="baud", default=45.45, metavar="BAUD")
 	opts.add_option('-p','--port', help="Port number (0=COM1)", dest="port", default="0", metavar="PORT")
 	opts.add_option('-l','--lf', help="Send LF at end of line", action="store_true", dest="lf", default=False)
 	opts.add_option('-u','--username', help="Google Voice user name", dest="guser", default=None, metavar="GUSER")
 	opts.add_option('-w','--password', help="Google Voice password", dest="gpass", default=None, metavar="GPASS")
 	opts.add_option('-d','--workdir', help="Directory for persistent state", dest="workdir", default='.', metavar="WORKDIR")
+	opts.add_option('-f','--format', help='Output format - none or "Aetheric"', dest="format", default=None)
 	####opts.add_option('-a','--ohdontforgetkey', help="API key for OhDontForget messaging", dest="ohdontforgetkey", default=None, metavar="OHDONTFORGETKEY")
 	(options, args) = opts.parse_args()						# get options
-	verbose = options.verbose								# verbose unless turned off
-	keyboard = options.keyboard								# true if no keyboard present
 	baud = options.baud										# baud rate
 	if options.port.isdigit() :
 		port = int(options.port)							# is port number (0=COM1)
@@ -502,20 +554,32 @@ def main() :
 	if len(args) > 0 :										# if given list of feeds
 		feedurls = args										# use feed list	
 	else :													# if nothing specified
-		feedurls = defaultfeedurls							# use default feed URLs					
-	if verbose :
-		print("Verbose mode.\nOptions: " + repr(options))
-		print("Args: " + repr(args))						# ***TEMP***
-		print("News feeds: %s" % (repr(feedurls),))			# list of news feeds
-		print("Using port %s at %s baud." % (port, str(baud)))	# port and speed info
-		if keyboard :
-			print("Accepting commands from Teletype keyboard")
-		else :
-			print("No keyboard present; will print latest news.")
-	ui = simpleui(feedurls, port, baud, lf, keyboard, options.halfduplex, 
-		options.guser, options.gpass, options.workdir, verbose)
+		feedurls = defaultfeedurls							# use default feed URLs	
+	#	Set up logging
+	logging.basicConfig()									# configure logging system
+	logger = logging.getLogger('Messager')					# main logger				
+	if options.verbose :
+		logger.setLevel(logging.DEBUG)						# -d: very verbose
+	elif options.quiet :
+		logger.setlevel(logging.WARNING)					# -q: errors only
+	else :
+		logger.setLevel(logging.INFO)						# none: info messages
+	#	Startup messages
+	logger.info("Options: " + repr(options))
+	logger.info("Args: " + repr(args))						
+	logger.info("News feeds: %s" % (repr(feedurls),))			# list of news feeds
+	logger.info("Using port %s at %s baud." % (port, str(baud)))	# port and speed info
+	if options.keyboard :
+		logger.info("Accepting commands from Teletype keyboard")
+	else :
+		logger.info("No keyboard present; will print latest news.")
+	ui = simpleui(feedurls, port, baud, lf, options.keyboard, options.halfduplex, 
+		options.guser, options.gpass, options.workdir, options.format, logger)
 	ui.feeds.markallasread("NEWS")							# mark all news as read
-	ui.runui(options.cmd)									# run the test
+	try: 
+		ui.runui(options.cmd)								# run the test
+	except Exception as message :							#
+		print("\n\n-----PROGRAM TERMINATED-----\n%s\n" % (str(message),))
 
 main()
 

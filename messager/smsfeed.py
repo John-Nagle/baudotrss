@@ -16,6 +16,7 @@
 import sys
 import googlevoice
 import time
+import logging
 import datetime
 import httplib
 import urllib2
@@ -23,12 +24,9 @@ import BeautifulSoup
 import feedmanager
 import threading
 import re
-#
-#	Temporary patch to "googlevoice".	Adds "recent_html" attribute to "Voice" objects,
-#	so we can read recent messages
-#
-if not "recent" in googlevoice.settings.FEEDS :
-	googlevoice.settings.FEEDS = googlevoice.settings.FEEDS + ("recent",)
+from pygooglevoicepatches import fetchfolderpage			# applies temporary patches to Google Voice
+
+
 #
 #	Useful regular expressions
 #
@@ -37,7 +35,10 @@ kremovetrailcolon = re.compile(r':$')						# trailing colon
 #
 #	extractsms  --  extract SMS messages from BeautifulSoup tree of Google Voice SMS HTML.
 #
-#	Output is a list of dictionaries, one per message.
+#	Output is a list of dictionaries. one per message
+#	A page may indicate that there are more pages to be read.
+#
+#	Returns (listofdicts, morepagestoread)
 #
 def extractsms(htmlsms) :
 	msgitems = []										# accum message items here
@@ -55,7 +56,10 @@ def extractsms(htmlsms) :
 				cl = span["class"]
 				msgitem[cl] = (" ".join(span.findAll(text=True))).strip()	# put text in dict
 			msgitems.append(msgitem)					# add msg dictionary to list
-	return(msgitems)
+	#	Check for more pages to read
+	moreitem = tree.find("a",attrs = {"id" : "gc-inbox-next"})	# check for more pages to read
+	morepages = not (moreitem is None)					# more pages to read?
+	return(msgitems, morepages)
 
 #
 #	class SMSfeed  --  read SMS messages from a Google Voice account.
@@ -63,16 +67,21 @@ def extractsms(htmlsms) :
 class SMSfeed(feedmanager.Feed) :	
 
 	kreadlistfile = "smsread.txt"						# list of SMS messages already read, as hashes	
-	kheadertext = "\n\n\a\n\a- - - THE AETHERIC MESSAGE MACHINE COMPANY, LTD.  - - -"	# printed as header
+	kheadertext = "\n\n\a\n\a- - - SMS MESSAGE - - -"	# printed as header
+	ktrailertext =   "- - - END OF MESSAGE - - -\n\n"
+
 	kpollinterval = 60.0								# poll this often (seconds)
-	kdeleteinterval = 60*60								# delete this often (seconds)
-	kdeleteage = 60*60*24								# delete conversation if nothing in this period
+
+	#	Message deletion - we must delete from inbox occasionally, to prevent it from becoming too big.
+	#	We can currently handle multi-page inboxes, so this is just a performance improvement.
+	kdeleteinterval = 60*30								# delete this often (seconds) even if no traffic
+	kdeleteage = 60*60*4								# delete conversation if nothing in this period 
 					
 	#
 	#	Called from outside the thread
 	#
-	def __init__(self, username, password, persistentdir = None, verbose=False) :
-		feedmanager.Feed.__init__(self, "SMS", verbose)
+	def __init__(self, username, password, persistentdir, logger) :
+		feedmanager.Feed.__init__(self, "SMS", logger)
 		self.lock = threading.Lock()					# lock object.  One login at a time.
 		self.username = username
 		self.password = password
@@ -84,7 +93,9 @@ class SMSfeed(feedmanager.Feed) :
 		self.url = self.hdrtitle
 		self.msgfrom = None								# phone number of last message returned to user
 		self.hdrtext = self.kheadertext					# default header, can be replaced
+		self.trailertext = self.ktrailertext			# default trailer
 		self.persistentdir = persistentdir				# save hashes of already-printed messages
+		self.logger = logger							# debug og to here
 		self.lastdelete = 0.0							# time of last delete cycle
 		self.loadhashes()								# load existing hashes
 
@@ -98,6 +109,7 @@ class SMSfeed(feedmanager.Feed) :
 		self.hashprinted[digest] = True					# note as printed
 		self.savehashes()								# mark as printed
 		self.msgfrom = item.msgfrom						# get From source if any
+		self.lastdelete = 0.0							# schedule a delete from inbox cycle
 
 	def getpollinterval(self) :							# poll this often
 		return(self.kpollinterval)
@@ -109,17 +121,16 @@ class SMSfeed(feedmanager.Feed) :
 		pass
 
 	def formattext(self, msgitem) :						# format a msg item, long form
+		kheaderfields = [("FROM","msgfrom"), ("DATE", "msgdate"), ("DELIVER TO", "msgdeliverto"),
+			("DELIVERY NOTE","msgdeliverynote")]
 		emsg = msgitem.errmsg
 		#	Format for printing as display message
 		if emsg :										# short format for errors
 			s = "%s: %s\n" % (msgitem.msgtime, emsg)
 			return(s)									# return with error msg
-		msgdate = "UNKNOWN"								# date can be None.  Handle.
-		if msgitem.msgdate :							# if date present
-			msgdate = msgitem.msgdate					# use it
-		fmt = "%s\nFROM: %s\nDATE: %s\nTIME: %s\n\n%s\n\n%s"
-		trailer =   "- - - END OF MESSAGE - - -\n\n\n\n\n\n\n"
-		s = fmt % (self.hdrtext, msgitem.msgfrom, msgitem.msgdate, msgitem.msgtime, msgitem.body, trailer)
+		#	Combine header, body and trailer
+		fmt = "%s\n%s\n%s\n%s\n"						# add four fields
+		s = fmt % (self.hdrtext, msgitem.formathdr("\n"), msgitem.body, self.trailertext)
 		return(s)										# no error
 
 	def summarytext(self, msgitem) :
@@ -128,8 +139,8 @@ class SMSfeed(feedmanager.Feed) :
 		if emsg :										# short format for errors
 			s = "%s: %s\n" % (msgitem.msgtime, emsg)
 			return(s)									# return with error msg
-		fmt = "SMS FROM %s  TIME %s: %s"
-		s = fmt % (msgitem.msgfrom, msgitem.msgtime, msgitem.body[:40])
+		fmt = "SMS %s -- %s"
+		s = fmt % (msgitem.formathdr("  "), msgitem.body[:40])
 		return(s)										# no error
 
 	def sendSMS(self, number, text) :					# sending capability
@@ -137,6 +148,7 @@ class SMSfeed(feedmanager.Feed) :
 		Send SMS message
 		"""
 		try: 
+			self.logger.info("Sending SMS to %s: %s" % (number, text))
 			voice = self.login()						# get logged in if necessary, will throw if fail
 			voice.send_sms(number, text)
 			return(None)								# success
@@ -182,8 +194,7 @@ class SMSfeed(feedmanager.Feed) :
 		if self.getmsgsreadfilename() is None :
 			return
 		try :
-			if self.verbose :
-				print('Saving IDs of messages read to "%s"' % (self.getmsgsreadfilename(),))
+			self.logger.debug('Saving IDs of messages read to "%s"' % (self.getmsgsreadfilename(),))
 			fd = open(self.getmsgsreadfilename(),"w")	# overwrite file
 			fd.write("# Hashes of Google Voice messages already printed.\n")	# identify file for humans
 			for line in self.hashprinted.keys() :		# write out items we've printed
@@ -200,8 +211,7 @@ class SMSfeed(feedmanager.Feed) :
 		#	Get logged in, or throw.
 		with self.lock :
 			if self.voice is None :						# login if necessary
-				if self.verbose :
-					print("Logging into Google Voice")	# note login
+				self.logger.info("Logging into Google Voice")	# note login
 				self.voice = googlevoice.Voice()		# get new voice object
 				self.voice.login(self.username, self.password)		# try to login
 			assert(self.voice)							# must have voice object at this point
@@ -215,21 +225,33 @@ class SMSfeed(feedmanager.Feed) :
 				except:									# ignore logout problems
 					pass
 			self.voice = None
+
 			
 	def fetchitems(self) :								# fetch more items from feed source
 		try :
 			voice = self.login()						# log in if necessary
-			voice.inbox()								# obtain and parse inbox
-			htmlsms = voice.inbox.html					# get html from inbox
-			####print("htmlsms: " + repr(htmlsms))			# ***TEMP***
-			msgs = extractsms(htmlsms)					# parse HTML into more useful form
-			#	Extract conversation data, because the HTML data doesn't have all the info.
+			pagenum = 1									# start at page 1 of results
+			morepages = True							# there are more pages to do
+			msgs = []									# messages retrieved
 			convs = {}									# map id -> conversation object
-			for conv in voice.inbox.folder.messages :	# for all conversations
-				id = conv.id
-				convs[id] = conv						# index by ID
-			if self.verbose :
-				print("%d SMS messages in inbox." % (len(msgs),))	# number in inbox
+			while morepages :							# while more pages to do
+				xmlparser = fetchfolderpage(voice,"all",pagenum)		# Use workaround code that can do multiple pages
+				xmlparser()									# build folder object
+				infolder = xmlparser.folder					# get folder part of folder (JSON data)
+				htmlsms = xmlparser.html					# get HTML part of folder
+				####voice.inbox()								# obtain and parse inbox
+				####htmlsms = voice.inbox.html					# get html from inbox
+				####infolder = voice.inbox.folder				# folder of interest
+				(msgpage, morepages) = extractsms(htmlsms)		# parse HTML into more useful form
+				msgs.extend(msgpage)					# add new set of messages
+				self.logger.info("Fetched %d conversations from Google Voice page %d; %d convs. in inbox, more pages: %s." % 
+						(len(infolder.messages), pagenum, infolder.totalSize, str(morepages)))
+				#	Extract conversation data, because the HTML data doesn't have all the info.
+				for conv in infolder.messages :				# for all conversations
+					id = conv.id
+					convs[id] = conv						# index by ID
+				pagenum += 1							# advance page number for next page
+			self.logger.info("%d SMS messages in inbox, %d to print." % (len(msgs),self.inqueue.qsize()))	# number in inbox
 			for hash in self.hashread.keys() :			# for everything we've read
 				self.hashread[hash] = False				# not yet seen on this round
 			for msg in msgs :							# for each item
@@ -304,9 +326,8 @@ class SMSfeed(feedmanager.Feed) :
 		self.logout()
 		return(msgtxt)
 
-	def doitem(self, msgitem, convs) :
-		if self.verbose :
-			print("SMS in: %s" % (str(msgitem),))		# print message
+	def processitem(self, msgitem, convs) :				# returns a msgitem
+		self.logger.debug("SMS in: %s" % (str(msgitem),))		# print message
 		msgtime = msgitem['gc-message-sms-time'].strip()	# fetch named fields from Google's HTML - time without date
 		msgtext = msgitem['gc-message-sms-text'].strip()	# the message text
 		msgfrom = msgitem['gc-message-sms-from'].strip()	# sending phone number
@@ -331,24 +352,35 @@ class SMSfeed(feedmanager.Feed) :
 		digest = msgitem.digest							# get message digest as hex string, to check if seen before
 		if digest in self.hashread :					# if already seen
 			self.hashread[digest] = True				# note seen again
-			return										# done
+			return(None)								# done
 		self.hashread[digest] = True					# new message, note seen, but not yet printed
-		if msgfrom.upper().startswith("ME") :			# if msg from self
-			return										# ignore
-		if self.verbose :
-			print("New SMS msg from %s: %s" % (msgfrom, msgtext))
 		#	If msg is from "Me", ignore it.  That's an echo of something we sent.
-		self.inqueue.put(msgitem)						# add to output queue
+		if msgfrom.upper().startswith("ME") :			# if msg from self
+			return(None)								# ignore
+		self.logger.debug("New SMS msg from %s: %s" % (msgfrom, msgtext))
+		return(msgitem)									# return a msgitem
+
+	#	Doitem -- called for each item to be printed
+	#	Override this in subclasses for special processing
+	def doitem(self, msgitem, convs) :
+		msgitem = self.processitem(msgitem, convs)		# make into a message item
+		if msgitem :									# if got an item
+			self.inqueue.put(msgitem)					# enqueue it
 
 	#	Delete old conversations.  Only call when no messages remain to be printed.
+	#	The Google Voice inbox can only hold 10 messages, so we have to move
+	#	printed conversations to the Trash.  
+	#	But there's a race condition problem.  Deletion is by conversation, not message.
+	#	We cannot tell, when deleting a conversation, if a message came in for it recently.
+	#	We don't delete a conversation that had traffic in the last N minutes, but this
+	#	is not airtight.  NEEDS WORK
 	def deleteoldmsgs(self, msgs) :						# delete old messages on server
 		if not self.inqueue.empty() :					# if output queue not empty
 			return
 		now = time.time()								# time now
 		if now - self.lastdelete < self.kdeleteinterval :	# too soon for delete cycle
 			return
-		if self.verbose :
-			print("Deleting conversations older than %1.1f hours." % (self.kdeleteinterval / (60*60),))
+		self.logger.info("Deleting conversations older than %1.1f minutes." % (self.kdeleteage / (60),))
 		#	Get msg IDs from inbox.  Only these need to be deleted.
 		ids = {}										# IDs of messages in inbox
 		for msg in msgs :
@@ -361,22 +393,20 @@ class SMSfeed(feedmanager.Feed) :
 			timediff = datetime.datetime.now() - timestamp		# age of conversation
 			age = timediff.days * (60*60*24) + timediff.seconds	# convert to seconds
 			ininbox = id in ids							# true if in inbox
-			if self.verbose :
-				print(" Conversation %s from %s at %s, age %1.1f days, inbox=%s" % 
+			self.logger.debug(" Conversation %s from %s at %s, age %1.1f days, inbox=%s" % 
 					(id, str(conv.phoneNumber), str(timestamp), age/(24*60*60.0), str(ininbox)))
 			if age > self.kdeleteage and ininbox :					# if old enough to delete
-				if self.verbose :
-					print(" Deleting conversation %s from %s at %s, age %1.1f days." % 
+				self.logger.info(" Deleting conversation %s from %s at %s, age %1.1f days." % 
 						(id, str(conv.phoneNumber), str(timestamp), age/(24*60*60.0)))
 				conv.delete()							# mark as read
 		self.lastdelete = now							# timestamp of last delete cycle
 
 
 	def logwarning(self, errmsg) :						# log warning message
-		print('WARNING: SMS:": %s' % (errmsg,))			# just print for now
+		self.logger.warning('SMS:": %s' % (errmsg,))	
 
 	def logerror(self, errmsg) :						# return warning message to Teletype
-		print('ERROR: SMS": %s' % (errmsg, ))				# Returned as error message
+		self.logger.error('SMS": %s' % (errmsg, ))				# Returned as error message
 		if self.inqueue.empty () :						# only add error if empty.  Will repeat if problem
 			newitem = feedmanager.FeedItem(self, None, "Today", "Now", None, None, errmsg)
 			self.inqueue.put(newitem)					# add to output queue
