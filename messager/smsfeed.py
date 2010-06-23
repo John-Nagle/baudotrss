@@ -237,28 +237,7 @@ class SMSfeed(feedmanager.Feed) :
 			
 	def fetchitems(self) :								# fetch more items from feed source
 		try :
-			voice = self.login()						# log in if necessary
-			pagenum = 1									# start at page 1 of results
-			morepages = True							# there are more pages to do
-			msgs = []									# messages retrieved
-			convs = {}									# map id -> conversation object
-			while morepages :							# while more pages to do
-				xmlparser = fetchfolderpage(voice,"sms",pagenum)		# Use workaround code that can do multiple pages
-				xmlparser()									# build folder object
-				infolder = xmlparser.folder					# get folder part of folder (JSON data)
-				htmlsms = xmlparser.html					# get HTML part of folder
-				####voice.inbox()								# obtain and parse inbox
-				####htmlsms = voice.inbox.html					# get html from inbox
-				####infolder = voice.inbox.folder				# folder of interest
-				(msgpage, morepages) = extractsms(htmlsms)		# parse HTML into more useful form
-				msgs.extend(msgpage)					# add new set of messages
-				self.logger.info("Fetched %d conversations from Google Voice page %d; %d convs. in inbox, more pages: %s." % 
-						(len(infolder.messages), pagenum, infolder.totalSize, str(morepages)))
-				#	Extract conversation data, because the HTML data doesn't have all the info.
-				for conv in infolder.messages :				# for all conversations
-					id = conv.id
-					convs[id] = conv						# index by ID
-				pagenum += 1							# advance page number for next page
+			(msgs, convs) = self.fetchconversations()	# get all messages
 			self.logger.info("%d SMS messages in inbox, %d to print." % (len(msgs),self.inqueue.qsize()))	# number in inbox
 			for hash in self.hashread.keys() :			# for everything we've read
 				self.hashread[hash] = False				# not yet seen on this round
@@ -301,10 +280,34 @@ class SMSfeed(feedmanager.Feed) :
 		except googlevoice.util.LoginError as message :
 			self.logerror(self.fetcherror("Messaging system does not recognize you", message))
 
-	def fetchconversations(self) :							# fetch SMS conversation folders
+	#
+	#	fetchconversations  --  fetch all conversations from Google Voice
+	#
+	def fetchconversations(self) :							# fetch all SMS conversation folders
 		try :
 			voice = self.login()							# log in if necessary
-			return(voice.sms())								
+			pagenum = 1										# start at page 1 of results
+			morepages = True								# there are more pages to do
+			msgs = []										# messages retrieved
+			convs = {}										# map id -> conversation object
+			while morepages :								# while more pages to do
+				xmlparser = fetchfolderpage(voice,"sms",pagenum)		# Use workaround code that can do multiple pages
+				xmlparser()									# build folder object
+				infolder = xmlparser.folder					# get folder part of folder (JSON data)
+				htmlsms = xmlparser.html					# get HTML part of folder
+				####voice.inbox()							# obtain and parse inbox
+				####htmlsms = voice.inbox.html				# get html from inbox
+				####infolder = voice.inbox.folder			# folder of interest
+				(msgpage, morepages) = extractsms(htmlsms)	# parse HTML into more useful form
+				msgs.extend(msgpage)						# add new set of messages
+				self.logger.info("Fetched %d conversations from Google Voice page %d; %d convs. in inbox, more pages: %s." % 
+						(len(infolder.messages), pagenum, infolder.totalSize, str(morepages)))
+				#	Extract conversation data, because the HTML data doesn't have all the info.
+				for conv in infolder.messages :				# for all conversations
+					id = conv.id
+					convs[id] = conv						# index by ID
+				pagenum += 1								# advance page number for next page
+			return(msgs, convs)								# return all conversations
 
 		#	Exception handling
 		except AttributeError as message :				# if trouble
@@ -402,8 +405,8 @@ class SMSfeed(feedmanager.Feed) :
 		for msg in msgs :
 			ids[msg["id"]] = True
 		#	Get all SMS conversations	
-		folder = self.fetchconversations()				# get all conversations
-		for conv in folder.messages :					# for all conversations
+		(msgs, convs) = self.fetchconversations()		# get all conversations
+		for conv in convs.values() :					# for all conversations
 			id = conv.id
 			timestamp = conv.displayStartDateTime		# last update to conversation
 			timediff = datetime.datetime.now() - timestamp		# age of conversation
