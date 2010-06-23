@@ -20,10 +20,11 @@ class AethericMessageFeed(smsfeed.SMSfeed) :
 
 	kheadertext = "\n\n\a\n\a. . . THE AETHERIC MESSAGE MACHINE COMPANY, LTD.  . . ."	# printed as header
 	ktrailertext =   ". . . END OF MESSAGE . . .\n\n"
-	kerrormsg1 = 'Aetheric messages, to be delivered, must begin "TO name of recipient :", and must tell us where to deliver it.  Please try again.'
+	kerrormsg1 = 'Aetheric messages, to be delivered, must begin "TO full name :".  The ":" is required.  Please try again.'
 	kerrormsg1s = 'No "TO name "'	# note problem
 	kackmsg1 = 'Yr. message to "%s" received for delivery by The Aetheric Msg Machine Co, Ltd and St.Clair Aeronauts.'
 	kenablesmsreplies = True								# true to send SMS replies for errors and acks
+	kenableprintrejects = False								# true if we will print rejected messages
 					
 	#
 	#	Called from outside the thread
@@ -53,7 +54,7 @@ class AethericMessageFeed(smsfeed.SMSfeed) :
 			if matchitem :
 				(topart, contentpart) = matchitem.group(1,2)	# decompose message
 				if not topart is None and not contentpart is None : #	if valid
-					msgitem.msgdeliverto = topart		# break body field into TO and body fields
+					msgitem.msgdeliverto = topart.strip()		# break body field into TO and body fields
 					msgitem.body = contentpart			# delete TO info from body field
 					self.inqueue.put(msgitem)			# process item
 					replytext = self.kackmsg1 % (topart,)	# format reply
@@ -65,6 +66,7 @@ class AethericMessageFeed(smsfeed.SMSfeed) :
 			if self.enablesmsreplies :
 				self.sendSMS(msgitem.msgfrom, self.kerrormsg1)	# reply to caller
 			msgitem.body = "ERROR: %s\n\n%s" % (self.kerrormsg1s, msgitem.body)
-			self.inqueue.put(msgitem)					# still print, but as error - 3 bells, no eject.
+			if self.kenableprintrejects :				# if printing rejected messages
+				self.inqueue.put(msgitem)				# still print, but as error 
 				
 	

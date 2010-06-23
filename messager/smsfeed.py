@@ -76,6 +76,14 @@ class SMSfeed(feedmanager.Feed) :
 	#	We can currently handle multi-page inboxes, so this is just a performance improvement.
 	kdeleteinterval = 60*30								# delete this often (seconds) even if no traffic
 	kdeleteage = 60*60*4								# delete conversation if nothing in this period 
+
+	khtmlrewrites = [									# rewrite rules for cleaning HTML data
+		(re.compile(r'&mdash;'),'-'),					# convert HTML escape for mdash
+		(re.compile(r'&amp;'),'&'),						# convert HTML escape for ampersand
+		(re.compile(r'&\w+;'),'?'),						# any other special chars become question mark
+		(re.compile(r'&\#\w+;'),'?')					# get numeric escapes, too.
+		]												# 
+
 					
 	#
 	#	Called from outside the thread
@@ -235,7 +243,7 @@ class SMSfeed(feedmanager.Feed) :
 			msgs = []									# messages retrieved
 			convs = {}									# map id -> conversation object
 			while morepages :							# while more pages to do
-				xmlparser = fetchfolderpage(voice,"all",pagenum)		# Use workaround code that can do multiple pages
+				xmlparser = fetchfolderpage(voice,"sms",pagenum)		# Use workaround code that can do multiple pages
 				xmlparser()									# build folder object
 				infolder = xmlparser.folder					# get folder part of folder (JSON data)
 				htmlsms = xmlparser.html					# get HTML part of folder
@@ -264,12 +272,13 @@ class SMSfeed(feedmanager.Feed) :
 			for hash in dellist :						# apply to-delete list to dict
 				del(self.hashread[hash])
 			#	Purge no-longer-current items from printed list
-			dellist = []
-			for hash in self.hashprinted.keys() :		# for all in dict
-				if not hash in self.hashread :			# not seen on this round
-					dellist.append(hash)				# add to to-delete list
-			for hash in dellist :						# apply to-delete list to dict
-				del(self.hashprinted[hash])
+			if False :									# ***TEMP TURNOFF*** deleted msgs can come back from 
+				dellist = []
+				for hash in self.hashprinted.keys() :		# for all in dict
+					if not hash in self.hashread :			# not seen on this round
+						dellist.append(hash)				# add to to-delete list
+				for hash in dellist :						# apply to-delete list to dict
+					del(self.hashprinted[hash])
 			self.deleteoldmsgs(msgs)					# delete day-old messages on server if indicated
 
 		#	Exception handling
@@ -347,6 +356,7 @@ class SMSfeed(feedmanager.Feed) :
 		else :
 			print("No matching JSON data for SMS msg ID " + str(msgid))	# unmatched JSON and HTML.  Not serious.
 		#	Data cleanup
+		msgtext = self.cleanhtml(msgtext)				# clean up message text, which can have HTML escapes
 		msgfrom = kremovetrailcolon.sub("",msgfrom)		# remove trailing ":" that Google seems to append
 		msgitem = feedmanager.FeedItem(self, msgfrom, msgdate, msgtime, None, msgtext)	# build output item
 		digest = msgitem.digest							# get message digest as hex string, to check if seen before
@@ -366,6 +376,12 @@ class SMSfeed(feedmanager.Feed) :
 		msgitem = self.processitem(msgitem, convs)		# make into a message item
 		if msgitem :									# if got an item
 			self.inqueue.put(msgitem)					# enqueue it
+
+	def cleanhtml(self, s)	:							# clean out HTML escapes
+		for (pattern, rep) in self.khtmlrewrites :		# apply all rewrite rules
+			s = pattern.sub(rep, s)						# in sequence
+		return(s)										# return string without HTML escapes
+
 
 	#	Delete old conversations.  Only call when no messages remain to be printed.
 	#	The Google Voice inbox can only hold 10 messages, so we have to move
