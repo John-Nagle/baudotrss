@@ -1,1 +1,0 @@
-### OBSOLETE - not needed with PySerial 2.5 or later ###
