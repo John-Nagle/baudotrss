@@ -421,16 +421,5 @@ class SMSfeed(feedmanager.Feed) :
 		self.lastdelete = now							# timestamp of last delete cycle
 
 
-	def logwarning(self, errmsg) :						# log warning message
-		self.logger.warning('SMS:": %s' % (errmsg,))	
-
-	def logerror(self, errmsg) :						# return warning message to Teletype
-		self.logger.error('SMS": %s' % (errmsg, ))				# Returned as error message
-		if self.inqueue.empty () :						# only add error if empty.  Will repeat if problem
-			newitem = feedmanager.FeedItem(self, None, "Today", "Now", None, None, errmsg)
-			self.inqueue.put(newitem)					# add to output queue
-
-
-
 
 									
