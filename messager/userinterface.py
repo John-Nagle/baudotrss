@@ -57,13 +57,13 @@ def expandescapes(s) :
 #    printweather
 #
 def printweather(ui) :
-    (state, city) = ui.weathercity      # get city and state
+    (state, city) = ui.weathercity          # get city and state
     if (state is None) or (city is None) :  # if no city
         ui.tty.doprint("No city is configured for weather reports.\n\n")
         return
     s = weatherreport.getweatherreport(state, city)
-    s = baudottty.convertnonbaudot(s)   # convert special chars to plausible equivalents
-    s = baudottty.wordwrap(s)           # word wrap
+    s = ui.tty.convertnonbaudot(s)          # convert special chars to plausible equivalents
+    s = baudottty.wordwrap(s)               # word wrap
     ui.tty.doprint(s)
     ui.tty.doprint("\n\n\n")
 #
@@ -252,7 +252,7 @@ class simpleui(object) :
         self.tty = tty                                      # use TTY object
         self.logger = logger                                # use logger
         #   Configuration setup
-        self.keyboard = config.get("teletype","keyboard")   # if keyboard present
+        self.keyboard = config.getboolean("teletype","keyboard")   # if keyboard present
         self.halfduplex = config.getboolean("teletype","halfduplex")
         self.cutmarks = config.getboolean("format", "cutmarks")
         self.format = None
@@ -358,14 +358,14 @@ class simpleui(object) :
                 #    Print feed title if it changed
                 if title != feed.getlasttitleprinted() :
                     feed.setlasttitleprinted(title)    # save new title so we can tell if it changed
-                    title = baudottty.convertnonbaudot(title)    # convert special chars to plausible equivalents
+                    title = tty.convertnonbaudot(title)    # convert special chars to plausible equivalents
                     title = baudottty.wordwrap(title)        # word wrap
                     self.logger.debug("Source: " + title)
                     tty.doprint(title )                     # print title
                     if errmsg :
                         tty.doprint(ERRBELLS)              # ring bells here
                     tty.doprint('\n')                       # end title line
-                s = baudottty.convertnonbaudot(s)           # convert special chars to plausible equivalents
+                s = tty.convertnonbaudot(s)           # convert special chars to plausible equivalents
                 s = baudottty.wordwrap(s)                   # word wrap
                 if s[-1] != '\n' :                          # end with NL
                     s += '\n'
@@ -517,6 +517,7 @@ class simpleui(object) :
             if self.keyboard :                              # if keyboard present
                 self.readtask.start()                       # start reading from it
             else :                                          # if no keyboard
+                self.logger.debug("No keyboard configured.")# no keyboard
                 if initialcmd is None :                     # if no initial command
                     initialcmd = "N"                        # read news, forever.
             self.uiloop(initialcmd)                         # run main UI loop

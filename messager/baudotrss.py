@@ -35,10 +35,10 @@ warnings.filterwarnings(action='ignore', category=DeprecationWarning, module='fe
 #
 #   opentty  --  create and open the TTY device
 #
-def opentty(port, baud, lf, extraltrs) :
+def opentty(port, baud, lf, extraltrs, charset) :
     extraltrs = min(10,max(1,extraltrs))        # sanity check
     tty = baudottty.BaudotTTY()                 # get a TTY object
-    tty.open(port, baud, READTIMEOUT)           # initialize a TTY on indicated port
+    tty.open(port, baud, charset, READTIMEOUT)  # initialize a TTY on indicated port
     tty.eolsettings(lf, extraltrs)              # set end of line defaults
     return(tty)                                 # a BaudotTTY object
 
@@ -107,6 +107,7 @@ def main() :
         port = config.get("teletype", "port")               # serial or USB port
         if port.isdigit() :
             port = int(port)                                # is port number (0=COM1)
+        charset = config.get("teletype", "charset")         # USTTY, ITA2 or Fractions
         #   Get list of feeds from config
         for (k, v) in config.items("feeds") :               # get more from config
             feedurls.append(config.get("feeds",k))          # add feeds
@@ -118,7 +119,7 @@ def main() :
         #   Try to open serial port to Teletype
         extraltrs = config.getint("teletype", "extraltrs")  # extra LTRS at EOL
         lf = config.getboolean("teletype","lf")             # LF on CR teletype feature
-        tty = opentty(port, baud, lf, extraltrs)            # open serial port, can raise
+        tty = opentty(port, baud, lf, extraltrs, charset)   # open serial port, can raise
         logger.debug("Serial port: " + repr(tty.ser))       # print serial port settings
         if options.ryrypat or options.alphapat :            # if test pattern only       
             testpattern(tty, options)                       # just do dumb test pattern
