@@ -389,9 +389,9 @@ class NavigableString(unicode, PageElement):
         else:
             raise AttributeError, "'%s' object has no attribute '%s'" % (self.__class__.__name__, attr)
 
-    def __unicode__(self):
-        return __str__(self, None)
-
+    def __unicode__(self):                                              # ***PATCHED IN FROM BeautfulSoup 3.2***
+        return str(self).decode(DEFAULT_OUTPUT_ENCODING)
+        
     def __str__(self, encoding=DEFAULT_OUTPUT_ENCODING):
         if encoding:
             return self.encode(encoding)

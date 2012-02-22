@@ -13,6 +13,7 @@
 import sys
 assert(sys.version_info >= (2,6))           # Requires Python 2.6 or later.
 sys.path.append("./googlevoice")            # for SMS access
+import socket
 import serial                               # PySerial
 import baudot                               # baudot charset info
 import threading
@@ -44,6 +45,8 @@ EJECTSTR = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"   # paper eject sequence
 
 ERRBELLS = "\a \a \a"                               # ring 3 slow bells on error
 EXPANDESCAPESDICT = {"\\a": "\a", "\\n" :"\n" }     # useful escapes to expand
+
+DEFAULTSOCKETTIMEOUT = 60*2                         # 2 minute socket timeout
 #
 #   expandescapes  
 #
@@ -266,6 +269,8 @@ class simpleui(object) :
         self.itemprinting = None                            # ID of what's currently being printed
         self.uilock = threading.Lock()                      # lock object
         self.inqueue = Queue.Queue()                        # input queue
+        #   Set global socket timeout so feed readers don't hang.
+        socket.setdefaulttimeout(DEFAULTSOCKETTIMEOUT)      # prevent hangs
         #    SMS feed initialization
         if config.has_section("googlevoice") :              # if Google Voice
             self.smsmsgfeed = smsfeed.SMSfeed(
