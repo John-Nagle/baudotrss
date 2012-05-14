@@ -75,3 +75,8 @@ def fetchfolderpage(voice, pagetype, pagenumber=1) :	# fetch page N (starting fr
 		params = {'page' : "p" + str(pagenumber)}		# get page "p2", etc.
 	xmlparser = voice._Voice__get_xml_page(pagetype, params)	# violate class privacy per developer instructions
 	return (xmlparser)									# return XML parser object			
+
+    
+#   Patch for 2012 - Google changed the login URL.
+googlevoice.settings.LOGIN = 'https://accounts.google.com/ServiceLogin?service=grandcentral'
+

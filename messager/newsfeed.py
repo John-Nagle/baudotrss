@@ -201,14 +201,18 @@ class Newsfeed(feedmanager.Feed) :
             del(dict[elt])                              # delete from dict
             self.logger.debug("Expired: %s" % (elt,))   # debug
 
-    def doentry(self,entry, now)    :                   # do one feed entry
-        title = entry.title                             # title of entry
-        id = getattr(entry,"id", None)                  # ID of entry
-        description = entry.description                 # description of entry
+    def doentry(self,entry, now)    :                       # do one feed entry
+        title = entry.title                                 # title of entry
+        id = getattr(entry,"id", None)                      # ID of entry
+        description = entry.description                     # description of entry
         #    Clean up news item.  Should do this via feedparser utilities.
         description = self.cleandescription(entry.description)
-        date = entry.date                               # date of entry
-        dateparsed = entry.date_parsed                  # date parsed
+        try :                                               # feedparser >= 5.1.1
+            date = entry.published                          # publication date of entry
+            dateparsed = entry.published_parsed             # date parsed
+        except AttributeError:                              # older feedparser
+            date = entry.date                               # feedparser < 5.1.1
+            dateparsed = entry.date_parsed
         # convert to local time.  Feedparser times are UT
         dateparsed = datetime.datetime.fromtimestamp(calendar.timegm(dateparsed))
         assert(isinstance(dateparsed, datetime.datetime))
