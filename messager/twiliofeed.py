@@ -27,6 +27,7 @@ import urllib
 import urllib2
 import BeautifulSoup
 import feedmanager
+import msgutils
 import threading
 import base64
 import re
@@ -311,8 +312,8 @@ class Twiliofeed(feedmanager.Feed) :
         try :                                           # parse ISO date/time
             timestamp = datetime.datetime.strptime(rcvtime, "%Y-%m-%d %H:%M:%S")
             timestamp = maketimelocal(timestamp)        # convert to local time
-            msgtime = feedmanager.edittime(timestamp)   # "07:30 PM"
-            msgdate = feedmanager.editdate(timestamp)   # "March 12"
+            msgtime = msgutils.edittime(timestamp)      # "07:30 PM"
+            msgdate = msgutils.editdate(timestamp)      # "March 12"
         except ValueError :                             # if conversion problem
             self.logger.error("Date conversion failed: %s" % (rcvtime,))
             msgdate = ""                                # no date

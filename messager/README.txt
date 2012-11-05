@@ -22,6 +22,14 @@ Version 2.3:
 - Compatible with newer versions of FeedParser.
 - Some dead code removed.
 
+Version 2.4:
+
+Version 2.5:
+- Weather information now obtained from NWS XML feed instead of
+  discontinued NWS feed sites.
+- Add support for ITA2 character set.
+- Detects Internet connections stuck at WiFi logon pages.
+
 
 This is a Python program for driving classic Baudot teletype machines such as
 the Model 15 or Model 28.  It's usable with both KSR machines (with a keyboard)
@@ -101,13 +109,10 @@ There is also support for a Twilio SMS gateway, but this requires
 a Twilio account, a web hosting account, and some server side software
 not included here.
 
-"Weather" is currently the weather for San Francisco, CA.
-This can be changed in the code at the line
-
-	s = weatherreport.getweatherreport("ca","san_francisco")
-
-Only state/city combinations supported by NOAA will work. 
-NOTE: NOAA has discontiued thie service and it is no longer useful.
+"Weather" is currently the weather for Redwood City, CA
+This can be changed in the configuration file.  Most named
+places in the United States will work, but places without
+unique names may not look up correctly. 
 
 When the Teletype is prompting for a command, after 30 seconds, it
 will print "OFF" and turn off the motor.  Sending a BREAK will wake

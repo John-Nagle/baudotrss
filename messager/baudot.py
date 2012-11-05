@@ -35,6 +35,13 @@ class Baudot(object) :
     USTTYfigs = [
         b'\0',b'3',b'\n',b'-',b' ',b'\a',b'8',b'7',b'\r',b'$',b'4',b'\'',b',',b'!',b':',b'(',
         b'5',b'"',b')',b'2',b'#',b'6',b'0',b'1',b'9',b'?',b'&',None,b'.',b'/',b';',None]
+        
+    #   Tables for ITA2 code.  Minor differences from USTTY.  Apostrophe and Bell are reversed.
+    ITA2ltrs = USTTYltrs
+    ITA2figs = [
+        b'\0',b'3',b'\n',b'-',b' ',b'\'',b'8',b'7',b'\r',b'$',b'4',b'\a',b',',b'!',b':',b'(',
+        b'5',b'"',b')',b'2',b'#',b'6',b'0',b'1',b'9',b'?',b'&',None,b'.',b'/',b';',None]
+    
     
     #   The Fractions font.  This has 1/8, 1/4, 3/8, 1/2, 5/8, 3/4, and 7/8,
     #   which we do not support at this time. We lose the characters
@@ -45,10 +52,13 @@ class Baudot(object) :
         b'5',b'"',None,b'2',b'#',b'6',b'0',b'1',b'9',None,b'&',None,b'?',b'/',None,None]
        
     CHARSETS = {                                    # character sets by name
-            "USTTY": (USTTYltrs, USTTYfigs), 
+            "USTTY": (USTTYltrs, USTTYfigs),
+            "ITA2" : (ITA2ltrs, ITA2figs),
             "FRACTIONS":(FractionsLtrs, FractionsFigs)} 
     assert(len(USTTYltrs) == 32)                    # exactly 32
     assert(len(USTTYfigs) == 32)                    # exactly 32
+    assert(len(ITA2ltrs) == 32)                     # exactly 32
+    assert(len(ITA2figs) == 32)                     # exactly 32
     assert(len(FractionsLtrs) == 32)                # exactly 32
     assert(len(FractionsFigs) == 32)                # exactly 32
 

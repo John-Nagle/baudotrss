@@ -18,7 +18,7 @@ import serial                               # PySerial
 import baudot                               # baudot charset info
 import threading
 import baudottty
-import weatherreport                        # weather report
+import nwsweatherreport                     # weather report
 import newsfeed
 import smsfeed
 import twiliofeed
@@ -60,11 +60,8 @@ def expandescapes(s) :
 #    printweather
 #
 def printweather(ui) :
-    (state, city) = ui.weathercity          # get city and state
-    if (state is None) or (city is None) :  # if no city
-        ui.tty.doprint("No city is configured for weather reports.\n\n")
-        return
-    s = weatherreport.getweatherreport(state, city)
+    (state, city, zip) = ui.weathercity     # get city and state
+    s = nwsweatherreport.getweatherreport(city, state, zip)
     s = ui.tty.convertnonbaudot(s)          # convert special chars to plausible equivalents
     s = baudottty.wordwrap(s)               # word wrap
     ui.tty.doprint(s)
@@ -242,7 +239,6 @@ class uireadtask(threading.Thread) :
             self.lastread = now                             # update timestamp
         return(self.instate)                                # return input state
 
-
 #
 #    Class simpleui  -- simple user interface for news, weather, etc.
 #
@@ -291,7 +287,9 @@ class simpleui(object) :
                     expandescapes(config.get("format","header")),
                     expandescapes(config.get("format","trailer")))
         if config.has_section("weather") :                  # get weather loc
-            self.weathercity = (config.get("weather","state"), config.get("weather", "city"))
+            self.weathercity = (config.get("weather","state"), 
+                config.get("weather", "city"), 
+                config.get("weather", "zip"))               # city, state, zip
         #    Initialize TTY
         self.readtask = uireadtask(self)                    # input task
         #    Build list of feeds to follow

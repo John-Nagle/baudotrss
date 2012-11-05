@@ -20,6 +20,7 @@ import sys
 #    Add additional paths for our files
 sys.path.append("./feedparser")                         # in subdir
 import re
+import msgutils
 import feedparser
 import time
 import feedmanager
@@ -27,6 +28,8 @@ import Queue
 import rfc822                                           # for date parsing
 import calendar                                         # for date parsing
 import datetime
+import urllib2
+import BeautifulSoup
 #
 #    Constants
 #
@@ -151,52 +154,58 @@ class Newsfeed(feedmanager.Feed) :
         fmt = "FROM %s  TIME %s: %s"
         s = fmt % (msgitem.msgfrom, date_string, msgitem.body[:40])
         return(s)                                        # no error
-
-
+  
     #
     #    Called from within the thread
     #        
-    def fetchitems(self) :                                # fetch more items from feed source
-        try :                                            # try fetching
-            now = time.time()                            # timestamp
+    def fetchitems(self) :                            
+        """
+        Fetch more items from feed source.
+        """
+        try :                                           # try fetching
+            now = time.time()                           # timestamp
             d = feedparser.parse(self.url,etag=self.etag,modified=self.modified)    # fetch from URL
-            if d is None or not hasattr(d,"status") :    # if network failure
+            if d is None or not hasattr(d,"status") :   # if network failure
                 raise IOError("of network or news source failure")
             if d.status == 304 :                        # if no new items
                 self.logger.debug("Feed polled, no changes.")
-                return                                    # nothing to do
+                return                                  # nothing to do
             self.logger.debug("Read feed: %d entries, status %s" % (len(d.entries), d.status))
             if d.status != 200 :                        # if bad status
                 raise IOError("of connection error No. %d" % (d.status,))
-            oldetag = self.etag                            # save old etag for diagnosis
-            oldmodified = self.modified                    # save old timestamp for diagnosis
-            self.etag = d.etag                            # save position in feed for next time
-            self.modified = getattr(d,"modified",None)    # save last update timestamp, if any, for next time
+            #   Get fields from feed.  
+            if not "title" in d.feed :                  # if no title
+                msg = self.handlenonrss(self.url)       # Is this some non-RSS thing?
+                raise IOError(msg)                      # handle error
             self.hdrtitle = d.feed.title                # feed title
-            hdrdescription = d.feed.description            # feed description
-            hdrdate = "" #### d.feed.date                # date as string
+            hdrdescription = d.feed.description         # feed description
+            oldetag = self.etag                         # save old etag for diagnosis
+            oldmodified = self.modified                 # save old timestamp for diagnosis
+            self.etag = d.etag                          # save position in feed for next time
+            self.modified = getattr(d,"modified",None)  # save last update timestamp, if any, for next time
+            hdrdate = "" #### d.feed.date               # date as string
             #    Process all entries in feed just read.
             #    Ignore items that were previously seen
             for entry in d.entries :                    # get items from feed
-                msgitem = self.doentry(entry, now)        # do this entry
+                msgitem = self.doentry(entry, now)      # do this entry
                 if msgitem :                            # if new item to print
-                    self.inqueue.put(msgitem)            # save this item
-            self.markingallasread = False                # if marking all as read, stop doing that.
+                    self.inqueue.put(msgitem)           # save this item
+            self.markingallasread = False               # if marking all as read, stop doing that.
             #    Purge stories not seen in a while.
             self.purgeolditems(now-self.expirationsecs, self.itemqueued)    # purge old previousy read stories when expired
 
-        except (IOError, AttributeError) as message :    # if trouble
-            self.logger.exception(message)                # debug
+        except (IOError, AttributeError) as message :   # if trouble
+            self.logger.exception(message)              # debug
             errmsg = 'No "%s" news because %s.' % (self.gettitle(), str(message))
-            self.logerror(errmsg)                        # log
+            self.logerror(errmsg)                       # log
 
-    def purgeolditems(self,expirationtime,dict) :            # purge old items already seen and printed
+    def purgeolditems(self,expirationtime,dict) :       # purge old items already seen and printed
         #    We have to do this the hard way, because stories can appear in the feed, be preempted
         #    by higher priority stories, and reappear later.
         expired = []                                    # expired items
-        for elt in dict :                                # for item in dictionary
-            if dict[elt] < expirationtime :                # if expired
-                expired.append(elt)                        # note expired
+        for elt in dict :                               # for item in dictionary
+            if dict[elt] < expirationtime :             # if expired
+                expired.append(elt)                     # note expired
         for elt in expired :                            # for all expired items
             del(dict[elt])                              # delete from dict
             self.logger.debug("Expired: %s" % (elt,))   # debug
@@ -217,8 +226,8 @@ class Newsfeed(feedmanager.Feed) :
         dateparsed = datetime.datetime.fromtimestamp(calendar.timegm(dateparsed))
         assert(isinstance(dateparsed, datetime.datetime))
         msgitem = feedmanager.FeedItem(self, self.gettitle(), 
-            feedmanager.editdate(dateparsed), 
-            feedmanager.edittime(dateparsed), 
+            msgutils.editdate(dateparsed), 
+            msgutils.edittime(dateparsed), 
             title, description)
         #    Have we read this item already?  Check for duplicates.
         #    If either the ID or the text is duplicated, it's a duplicate.
@@ -243,5 +252,29 @@ class Newsfeed(feedmanager.Feed) :
             s = pattern.sub(rep, s)                            # in sequence
         ####print("After clean:\n" + s.encode('ascii','replace'))                # ***TEMP***
         return(s.strip())                                    # remove any lead/trail white space
+        
+    def handlenonrss(self, url) :
+        """
+        Handle something that is readable but might not be an RSS feed.
+        Returns an error message.
+        The real purpose of this is to detect public WiFi gateways which return
+        some sign up page instead of the desired RSS feed.
+        """
+        try :
+            opener = urllib2.urlopen(url)                   # URL opener object 
+            htmltext = opener.read(100000)                  # read beginning; we only need the title
+            opener.close()                                  # close
+            tree = BeautifulSoup.BeautifulSoup(htmltext)
+            titleitem = tree.find("title")                  # find title item
+            if titleitem :
+                title = titleitem.find(text=True)           # extract HTML page title text
+                if title :
+                    s = '"%s" was received instead of the expected RSS feed' % (title.strip(),)
+                    return(s)                               # Return coherent message                                           
+            return("of unrecognized data instead of the expected RSS feed")
+            
+        except EnvironmentError as message :
+            return(str(message))                            # trouble
+
 
                                     
