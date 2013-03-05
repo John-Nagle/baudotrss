@@ -170,6 +170,10 @@ class uireadtask(threading.Thread) :
     #    Nulls are not echoed, because two nulls will trip the "Send/Receive" lever to "Receive",
     #    and we use NULL for a backspace key.
     #
+    #   If no keyboard is present, all this does is sense "break", which will redo the previous command.
+    #   So RO machines will reprint news if a BREAK button is sent. 
+    #   Continuous breaks are ignored.
+    #
     def run(self) :
         try :
             self.dorun()                                    # do run thread
@@ -183,6 +187,7 @@ class uireadtask(threading.Thread) :
             return                                          # read task ends
 
     def dorun(self) :                                       # the thread
+        self.owner.logger.debug("Starting read thread.")    # reading starts
         tty = self.owner.tty                                # the TTY object
         halfduplex = self.owner.halfduplex                  # true if half duplex
         if halfduplex :                                     # in half duplex
@@ -457,8 +462,9 @@ class simpleui(object) :
             pass                                            # ignore
 
         
-    def uiloop(self, initialcmd = None) :
+    def uiloop(self, initialcmdin = None) :
         useshortprompt = False                              # use long prompt the first time
+        initialcmd = initialcmdin                           # initial command
         while True :
             try: 
                 self.endcancel()                            # end cancel if necessary
@@ -467,14 +473,16 @@ class simpleui(object) :
                     if initialcmd :                         # initial command avilable
                         cmd = initialcmd                    # use as first command
                         initialcmd = None                   # use it up
-                    else :                                  # otherwise prompt.
-                        promptmsg = SHORTPROMPT            # short prompt is abbreviated
+                    elif self.keyboard :                    # prompt if keyboard
+                        promptmsg = SHORTPROMPT             # short prompt is abbreviated
                         if not useshortprompt :             # use it unless there was an error
-                            promptmsg = LONGPROMPT         # print the long prompt this time
+                            promptmsg = LONGPROMPT          # print the long prompt this time
                             useshortprompt = True           # and the short prompt next time.
                         cmd = self.prompt(promptmsg ,       # prompt for input
                             ['N','W','S','O'],
                             1,simpleui.IDLETIMEOUT)
+                    else :                                  # no keyboard
+                        cmd = initialcmdin                  # do initial command again
                 except Queue.Empty :                        # if no-input timeout
                     self.tty.doprint('\n')
                     self.waitfortraffic(self.feeds)         # wait for traffic                
@@ -510,20 +518,19 @@ class simpleui(object) :
         #    Abort feed tasks
         self.feeds.abort()                                  # abort all feed tasks
         #    Abort read task.
-        if self.keyboard :                                  # if have a read task
-            self.logger.debug("Waiting for read task to complete.")
-            self.readtask.abort()                           # abort reading over at read task
-            self.logger.debug("Read task has completed.")
+        self.logger.debug("Waiting for read task to complete.")
+        self.readtask.abort()                               # abort reading over at read task
+        self.logger.debug("Read task has completed.")
 
     def runui(self, initialcmd = None) :
         try :
-            if self.keyboard :                              # if keyboard present
-                self.readtask.start()                       # start reading from it
-            else :                                          # if no keyboard
+            if not self.keyboard :                          # if keyboard present
                 self.logger.debug("No keyboard configured.")# no keyboard
                 if initialcmd is None :                     # if no initial command
                     initialcmd = "N"                        # read news, forever.
+            self.readtask.start()                           # start input
             self.uiloop(initialcmd)                         # run main UI loop
+            
         except (EOFError, serial.SerialException) as message :            # if trouble
             self.logger.error("Teletype connection failed, aborting: " + str(message))
             self.abortthreads()                             # abort all threads

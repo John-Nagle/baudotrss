@@ -30,6 +30,11 @@ Version 2.5:
 - Add support for ITA2 character set.
 - Detects Internet connections stuck at WiFi logon pages.
 
+Version 2.6:
+- Avoids printing news items more than once, even if their timestamp changes.
+- For machines with no keyboard, BREAK is now recognized, and will restart the
+  news feeds from the beginning.
+
 
 This is a Python program for driving classic Baudot teletype machines such as
 the Model 15 or Model 28.  It's usable with both KSR machines (with a keyboard)
@@ -48,7 +53,7 @@ System requirements:
 	Computer:			Intel 32-bit, with hardware serial port.  (USB to serial
 						converters will usually not work at 45.45 baud.)
 	Operating system	Windows 2000/XP. (Should work on Vista and Win7, not tested.)						
-	Python system:		2.6 (Only - 2.6 is needed for pyserial, and 3.x doesn't support feedparser)
+	Python system:		2.6 or 2.7 (No 3.x yet.)
 	Required packages:	win32api
 						pyserial
 						feedparser
@@ -74,9 +79,13 @@ System configuration issues:
 
 	USB to serial devices require special handling, as most will not run at 45.45 baud.
 	Some will.  See "http://www.aetherltd.com/connectingusb.html".  Some USB to
-    serial devcies must be configured to run at a false baud rate.  For the device
+    serial devices must be configured to run at a false baud rate.  For the device
     we use, the baud rate in the configuration file is set to 600 baud (an othewise
     unused value) and the device runs at 45.45 baud.  
+    
+    The file "configdefault.cfg" is a default configuration file, and documents the
+    available parameters.  If a second configuration file with a name ending in .cfg
+    is specified on the command line, items there override the defaults.
 
 Installation:
 	Usual setup.py rules apply.
@@ -112,7 +121,8 @@ not included here.
 "Weather" is currently the weather for Redwood City, CA
 This can be changed in the configuration file.  Most named
 places in the United States will work, but places without
-unique names may not look up correctly. 
+unique names may not look up correctly.  It's usually easier
+to specify the ZIP code in the "[weather]" section. 
 
 When the Teletype is prompting for a command, after 30 seconds, it
 will print "OFF" and turn off the motor.  Sending a BREAK will wake

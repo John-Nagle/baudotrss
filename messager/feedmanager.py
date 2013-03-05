@@ -91,12 +91,7 @@ class FeedItem(object) :
         self.feed.itemdonebase(self)                    # item will not be returned again after a crash
 
     def calcdigest(self) :                              # calculate message digest for uniqueness
-        m = hashlib.md5()                               # begin a hash of the fields present
-        for (printname, attrname) in self.kheaderfields :    # for all header fields
-            m.update(repr(getattr(self, attrname,"")))  # add attr to hash
-        if self.body :
-            m.update(repr(self.body))                   # body of msg
-        self.digest = m.hexdigest()                     # get message digest as hex string, to check if seen before
+        self.feed.calcdigest(self)                      # use feed-specific calculation
 
 
 #
@@ -212,6 +207,19 @@ class Feed(threading.Thread) :
         self.logger.info("Polling %s" % (self.feedtype,))
         self.fetchitems()                                # ask feed for some items
         self.lastpoll = time.time()                      # wait a full poll interval before asking again
+        
+    def calcdigest(self, item) :                 
+        """
+        Calculate message digest for uniqueness check
+        Generic version.  Some feeds have their own.
+        """
+        m = hashlib.md5()                               # begin a hash of the fields present
+        for (printname, attrname) in item.kheaderfields :    # for all header fields
+            m.update(repr(getattr(item, attrname,"")))  # add attr to hash
+        if item.body :
+            m.update(repr(item.body))                   # body of msg
+        item.digest = m.hexdigest()                     # get message digest as hex string, to check if seen before
+
         
     def logwarning(self, errmsg) :                      # log warning message
         self.logger.warning('SMS:": %s' % (errmsg,))    

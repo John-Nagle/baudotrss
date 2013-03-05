@@ -72,11 +72,11 @@ def maketimelocal(dt) :
     return(dt + delta)                              # apply time delta
 
 
-def doservercmd(logger, accountsid, cmd, v1=None, v2=None) :
+def doservercmd(logger, accountsid, ourphoneno, cmd, v1=None, v2=None) :
     """
     Send command to server at Aetheric (not Twilio), get XML reply
     """
-    fields = {"accountsid" : accountsid, "cmd": cmd }
+    fields = {"accountsid" : accountsid, "phonenumber": ourphoneno, "cmd": cmd }
     if v1 :
         fields["v1"] = v1
     if v2:
@@ -244,7 +244,7 @@ class Twiliofeed(feedmanager.Feed) :
             while True :                                # until all available read
                 self.logger.debug("Polling SMS server starting after serial #%s" 
                     % (self.lastserial,))
-                replyxml = doservercmd(self.logger, self.accountsid, "getnext", self.lastserial + 1, None) # get next msg
+                replyxml = doservercmd(self.logger, self.accountsid, self.ourphoneno, "getnext", self.lastserial + 1, None) # get next msg
                 newserial = self.handlereply(replyxml)  # handle message
                 self.logger.debug("Poll complete.")
                 if newserial and newserial > self.lastserial: # if got message
@@ -279,7 +279,7 @@ class Twiliofeed(feedmanager.Feed) :
                         fields[tag.name.strip().lower()] = v # key, value
                 #   Got message
                 if not "serial" in fields :
-                    raise RuntimeError("Messaging server returned XML without a serial number")
+                    raise EnvironmentError("Messaging server returned XML without a serial number")
                 self.logger.debug("New SMS message, serial %s" % (fields["serial"],))
                 newserial = max(newserial, int(fields["serial"]))  # advance serial
                 self.handlemsg(fields)                  # handle the message
@@ -364,7 +364,7 @@ class Twiliofeed(feedmanager.Feed) :
             while True:                                 # until Queue.empty or network error
                 item = self.donequeue.get_nowait()      # get input if any
                 serial = item.serial                    # serial number of done item
-                reply = doservercmd(self.logger, self.accountsid, 
+                reply = doservercmd(self.logger, self.accountsid, self.ourphoneno,
                     "printed", serial, serial)   
         except Queue.Empty:                             # if empty
             return(True)                                # success

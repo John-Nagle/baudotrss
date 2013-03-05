@@ -110,7 +110,8 @@ def main() :
         charset = config.get("teletype", "charset")         # USTTY, ITA2 or Fractions
         #   Get list of feeds from config
         for (k, v) in config.items("feeds") :               # get more from config
-            feedurls.append(config.get("feeds",k))          # add feeds
+            if v and v.strip() != "" :                      # if non-null feed
+                feedurls.append(v)                          # add feeds
         #    Startup messages
         logger.info("Options: " + repr(options))
         logger.info("Args: " + repr(args))                        
