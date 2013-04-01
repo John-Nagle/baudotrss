@@ -92,7 +92,7 @@ Installation:
 
 Running the program:
 
-Usage: baudotrss.py [options] [feedurls]
+Usage: baudotrss.py [options] [configfiles] [feedurls]
 
 Options:
   -h, --help            show this help message and exit
@@ -100,8 +100,35 @@ Options:
 
   With no options, the program will send a Reuters news feed to the
   first available serial port at 45.45 baud in Baudot.
+  
+The program is configured by creating a text file ending in ".cfg",
+and naming it on the command line.  The default configuration is
+in "configdefault.cfg", and comments there show the format of a
+config file.  Any item in a user-provided config file overrides the
+default values. 
+
+The most important configuration options are in the [teletype] section:
+
+   [teletype]                  # Machine params
+   #   Serial port - either /dev/usbxxx on Linux, or number (0=COM1:, etc) on Windows
+   # port: 2
+   #   Baud rate - Our USB interface, when set to 600 baud, runs at 45 baud.
+   baud: 600
+
+Those have to be right or nothing useful will happen.  "baud" should
+be set to 45 for a 60-speed machine on a classic PC serial port.
+We use 600 baud with our specially configured USB to serial converter.
+
+   #    Typebar character set: USTTY, ITA2, or FRACTIONS
+   charset: USTTY
+
+Most Model 15 and 28 machines are USTTY.  Western Union machines
+may be ITA2. 
+
+   #   Keyboard - true if keyboard present on TTY.  False for RO machines.
+   keyboard: True    
  
-If "--keyboard" is specified, the Teletype (not the computer) will prompt:
+If a keyboard is configured, the Teletype (not the computer) will prompt:
 
 "Type N for news, W for weather, S to send, O for off, or CR:"
 
@@ -112,22 +139,37 @@ So it will print "Waiting for news..." and wait.
 
 "Send" refers to sending SMS messages.  A Google Voice account is
 required for this feature.  Its username and password must be specified with
-"--username" and "--password" options.
+"username" and "password" options in the configuration file.
 
 There is also support for a Twilio SMS gateway, but this requires 
 a Twilio account, a web hosting account, and some server side software
-not included here.
+not included here.  
 
-"Weather" is currently the weather for Redwood City, CA
+"Weather" is currently the weather for San Jose, CA
 This can be changed in the configuration file.  Most named
 places in the United States will work, but places without
 unique names may not look up correctly.  It's usually easier
-to specify the ZIP code in the "[weather]" section. 
+to specify the ZIP code in the "[weather]" section.  This
+overrides any named city and state. 
+
+"Off" shuts down any Teletype activity, until a BREAK is sent
+to wake things up.  The program can sit indefinitely in OFF state
+waiting for a BREAK.  
 
 When the Teletype is prompting for a command, after 30 seconds, it
-will print "OFF" and turn off the motor.  Sending a BREAK will wake
+will print "WAITING" and turn off the motor.  Sending a BREAK will wake
 it up again. Sending a BREAK when other printing is going on will
 stop whatever is happening and prompt for a command.
+
+Without a keyboard, the program will print the latest news, then
+wait for further news updates.  If a BREAK is sent when no keyboard is 
+configured, the printing of news starts again from the beginning.  
+This is a good demo mode for receive only machines. 
+
+If the program has a problem connecting to the Internet, the
+problem will be reported on the Teletype, with three bells at
+the beginning of the message.  The error message will be repeated
+every two minutes until the problem is resolved.   
 
 There is no interactive interface or GUI on the computer.  This program
 is normally run in the background.  It will run forever until killed.

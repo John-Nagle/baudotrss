@@ -92,8 +92,10 @@ class nwsperiod(object) :
         """
         How far ahead is this forecast looking, in hours?
         """
-        timediff = self.timeinfo[0] - forecasttime       # how far ahead is this?
-        return (timediff.total_seconds() / 3600.0)  # hours ahead
+        timediff = self.timeinfo[0] - forecasttime  # how far ahead is this?
+        secsahead = timediff.days * 86400 + timediff.seconds  # seconds ahead
+        return (secsahead / 3600.0)                 # hours ahead
+        
         
     def asString(self) :
         """
@@ -286,7 +288,7 @@ class nwsxml(object) :
         localforecasttime = datetime.datetime.fromtimestamp(calendar.timegm(self.creationtime.timetuple()))
         timemsg = "%s at %s" % (msgutils.editdate(localforecasttime), msgutils.edittime(localforecasttime))
         s = "Weather forecast for %s on %s.\n\n" % (self.location, timemsg)   # header line
-        return(s + "\n".join(
+        return(s + "\n\n".join(
             [x.asString() for x in self.perioditems if x.hoursinfuture(self.creationtime) < hoursahead]))
 #
 #   getnwsforecast -- get National Weather Service forecast for lat, lon
