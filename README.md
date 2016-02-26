@@ -3,13 +3,15 @@ BaudotRSS - RSS and SMS support for antique 5-bit Teletype machines
 RSS reader for Baudot Teletype machines
 
 Simulates a classic "news ticker", printing current news and weather on old Baudot teletype machines. 
-Useful for museum-type demonstration systems. 
+
+See it in action: https://www.youtube.com/watch?v=6F_hhp4nCHE
+ 
 
 Supported hardware: Teletype Models 12, 15, 19, 28.
 
 John Nagle
 
-www.aetherltd.com
+The Aetheric Message Machine Company, Ltd. http://www.aetherltd.com
 
 April, 2009
 
@@ -36,7 +38,7 @@ However, if you configure a Twilio account, you can send SMS from the Teletype k
 
 System requirements:
 
-	Computer:			Intel 32-bit, with hardware serial port.  (USB to serial
+	Computer:		Intel 32-bit, with hardware serial port.  (USB to serial
                     converters will usually not work at 45.45 baud.)
 	Operating system	Windows 7/Linux. 						
 	Python system:		2.6 or 2.7 (No 3.x yet.)
