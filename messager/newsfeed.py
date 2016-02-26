@@ -122,17 +122,23 @@ class Newsfeed(feedmanager.Feed) :
         self.itemqueued = {}                            # item has been queued for printing
         self.markingallasread = True                    # marking all stories as read.
 
-    def markallasread(self) :                            # mark all stories as read
+    def markallasread(self) :                           # mark all stories as read
         try: 
             while True :                                # drain
-                self.inqueue.get_nowait()                # get input, if any
-        except Queue.Empty:                                # when empty
+                self.inqueue.get_nowait()               # get input, if any
+        except Queue.Empty:                             # when empty
             pass                                        # done
         self.logger.info("News feed queue emptied.")
         self.markingallasread = True                    # mark all as read for one cycle            
 
-    def unmarkallasread(self) :                            # clear items already read
-        self.markingallasread = False                    # do not mark all as read
+    def unmarkallasread(self) :                         # clear items already read
+        try: 
+            while True :                                # drain
+                self.inqueue.get_nowait()               # get input, if any
+        except Queue.Empty:                             # when empty
+            pass                                        # done
+        self.logger.info("News feed queue restarted.")  # restarting from beginning
+        self.markingallasread = False                   # do not mark all as read
         self.itemqueued = {}                            # no item has been queued for printing
         self.modified = None                            # no last-modified date
         self.etag = None                                # no previous RSS read
@@ -192,7 +198,7 @@ class Newsfeed(feedmanager.Feed) :
                 raise IOError("of connection error No. %d" % (d.status,))
             #   Get fields from feed.  
             if not "title" in d.feed :                  # if no title
-                msg = self.handlenonrss(self.url)       # Is this some non-RSS thing?
+                msg = self.handleunrecognizedfeed(self.url)     # Is this some non-RSS thing?
                 raise IOError(msg)                      # handle error
             self.hdrtitle = d.feed.title                # feed title
             hdrdescription = d.feed.description         # feed description
@@ -301,28 +307,7 @@ class Newsfeed(feedmanager.Feed) :
         item.digest = m.hexdigest()                     # get message digest as hex string, to check if seen before
         
         
-    def handlenonrss(self, url) :
-        """
-        Handle something that is readable but might not be an RSS feed.
-        Returns an error message.
-        The real purpose of this is to detect public WiFi gateways which return
-        some sign up page instead of the desired RSS feed.
-        """
-        try :
-            opener = urllib2.urlopen(url)                   # URL opener object 
-            htmltext = opener.read(100000)                  # read beginning; we only need the title
-            opener.close()                                  # close
-            tree = BeautifulSoup.BeautifulSoup(htmltext)
-            titleitem = tree.find("title")                  # find title item
-            if titleitem :
-                title = titleitem.find(text=True)           # extract HTML page title text
-                if title :
-                    s = '"%s" was received instead of the expected RSS feed' % (title.strip(),)
-                    return(s)                               # Return coherent message                                           
-            return("of unrecognized data instead of the expected RSS feed")
-            
-        except EnvironmentError as message :
-            return(str(message))                            # trouble
+    
 
 
                                     

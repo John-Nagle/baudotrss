@@ -41,6 +41,7 @@ class BaudotTTY(object) :
         self.ser = None                             # no serial port yet
         self.conv = None                            # no conversion table yet
         self.motoron = False                        # motor not running
+        self.baud = None                            # do not know baud rate yet
         self.outputcolmax = 72                      # carriage width
         self.motorstartdelay = 2.0                  # seconds to wait for motor start
         self.charsecs = 0.25                        # time to print one char, default
@@ -75,6 +76,7 @@ class BaudotTTY(object) :
             actualbaud = kactualbaud[actualbaud]    # remap 600 baud request to 45 baud actual, etc.
         self.charsecs = kspeedsafetymargin * (1 + 5 + 1.5) / actualbaud    # time to send one char, seconds
         self.clear()                                # reset to start state
+        self.baud = self.ser.getBaudrate()          # save serial device baud rate for flushing use
         self.conv = baudot.Baudot(charset)          # get Baudot conversion object
         self.ser.setDTR(1)                          # DTR to 1, so we can use DTR as a +12 supply 
         self.ser.setRTS(0)                          # motor is initially off
@@ -115,19 +117,26 @@ class BaudotTTY(object) :
     def motorison(self) :
         return(self.motoron)                        # true if motor is on
     #
-    #    flushOutput  --  discard queued output.
+    #   flushOutput  --  discard queued output.
+    #
+    #   There's often a write operation blocked when this is called, so self.lock 
+    #   may be set.  We thus command the serial port to flush output before waiting
+    #   for the lock.  This will unblock the write operation, which will release the
+    #   lock. Then we can do the flush again, with the lock set, and set the
+    #   machine state accordingly.
     #
     def flushOutput(self) :
+        self.ser.flushOutput()                      # initial flush in case output blocked and lock held
+        self.ser.setBaudrate(115200)                # set huge baud rate, 200x Teletype rate 
         with self.lock :
             self.kybdinterrupt = True               # set keyboard interrupt
             self.ser.flushOutput()                  # flush output
             #    Temporarily shift to high baud rate to flush on platforms that don't do flushOutput properly.
             #    This is a hack for USB to serial devices with big buffers.
-            oldbaud = self.ser.getBaudrate()        # get baud rate
             self.ser.setBaudrate(115200)            # set huge baud rate, 200x Teletype rate
-            ###print("Flushing using %d baud rate." % (self.ser.getBaudrate(), ))    # ***TEMP***
+            ## print("Flushing using %d baud rate." % (self.ser.getBaudrate(), ))    # ***TEMP***
             time.sleep(1.0)                         # wait 500ms
-            self.ser.setBaudrate(oldbaud)           # back to old baud rate
+            self.ser.setBaudrate(self.baud)         # back to old baud rate
             self.outputshift = None                 # shift state unknown
             self.outputcol = None                   # column position unknown
             self.printend = time.time()             # est. printing completion time is now

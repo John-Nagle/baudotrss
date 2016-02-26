@@ -85,7 +85,7 @@ def doservercmd(logger, accountsid, ourphoneno, cmd, v1=None, v2=None) :
     logger.debug("SMS server cmd: " + url)
     fd = urllib2.urlopen(url)                           # open url
     result = fd.read()                                  # read contents
-    logger.debug("SMS server reply: " + unicode(result)[:40] + "...")
+    logger.debug("SMS server reply: " + repr(result)[:40] + "...")
     fd.close()                                          # done with open
     return(result)                                      # return result
 #
@@ -196,7 +196,7 @@ class Twiliofeed(feedmanager.Feed) :
             self.logger.info("Sending SMS to %s: %s" % (number, text))
             fields = {"From" : self.ourphoneno , 
                 "To"  : number, "Body" : text }
-            url = "%sAccounts/%s/SMS/Messages" % (TWILIOBASE, self.accountsid)
+            url = "%sAccounts/%s/Messages" % (TWILIOBASE, self.accountsid)
             (status, tree) = self.twiliopost(url, fields)    # send to Twilio
             if status :
                 return(self.fetcherror("Problem No. %s sending message" %
@@ -268,15 +268,22 @@ class Twiliofeed(feedmanager.Feed) :
         try :
             #   Extract mesages from XML
             tree = BeautifulSoup.BeautifulStoneSoup(replyxml)  # parse XML into tree
+            #   Make sure we got XML.
+            responsetag = tree.find("response", recursive=True)   # find the top "response" tag
+            if not responsetag :                        # if did not find an response tag
+                msg = self.handleunrecognizedfeed(SERVERPOLLURL)    # reread for HTML error report
+                raise IOError(msg)                      # trouble
             #   Find all message tags in reply. There should be one or zero.
-            messagetags = tree.findAll("message", recursive=True)
+            messagetags = responsetag.findAll("message", recursive=True)
             for messagetag in messagetags :             # for all received messages
                 self.logger.debug("SMS msg as XML: \n" + messagetag.prettify())
                 fields = {}                             # fields of msg
                 for tag in messagetag.findAll(recursive=False) :  # tags at next lev
-                    v = tag.string.strip()              # get value
-                    if v != "" :                        # if nonempty
-                        fields[tag.name.strip().lower()] = v # key, value
+                    s = tag.string                      # get string within tag, which may be null
+                    if s :                              # if non-null
+                        v = tag.string.strip()          # get value
+                        if v != "" :                    # if nonempty
+                            fields[tag.name.strip().lower()] = v # key, value
                 #   Got message
                 if not "serial" in fields :
                     raise EnvironmentError("Messaging server returned XML without a serial number")
@@ -396,7 +403,7 @@ def test(accountsid) :
     print("Test completed")
     
 if __name__ == '__main__':
-    test("ACfaad9c9689c601d5dc8cc7498ffb6ee2")
+    test("???")
 
 
                                     

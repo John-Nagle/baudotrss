@@ -12,7 +12,6 @@
 #
 import sys
 assert(sys.version_info >= (2,6))           # Requires Python 2.6 or later.
-sys.path.append("./googlevoice")            # for SMS access
 import socket
 import serial                               # PySerial
 import baudot                               # baudot charset info
@@ -20,7 +19,7 @@ import threading
 import baudottty
 import nwsweatherreport                     # weather report
 import newsfeed
-import smsfeed
+
 import twiliofeed
 import feedmanager
 import time
@@ -273,13 +272,7 @@ class simpleui(object) :
         #   Set global socket timeout so feed readers don't hang.
         socket.setdefaulttimeout(DEFAULTSOCKETTIMEOUT)      # prevent hangs
         #    SMS feed initialization
-        if config.has_section("googlevoice") :              # if Google Voice
-            self.smsmsgfeed = smsfeed.SMSfeed(
-                config.get("googlevoice", "username"), 
-                config.get("googlevoice","password"), 
-                config.get("googlevoice","workdir"), 
-                self.logger)    # short form
-        elif config.has_section("twilio") :                 # if Twilio mode        
+        if config.has_section("twilio") :                 # if Twilio mode        
             self.smsmsgfeed = twiliofeed.Twiliofeed(
                 config.get("twilio", "accountsid"),
                 config.get("twilio", "authtoken"),

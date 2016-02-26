@@ -22,6 +22,8 @@ import Queue
 import threading
 import hashlib
 import msgutils
+import urllib2
+import BeautifulSoup
 #
 #   Constants
 #
@@ -245,6 +247,29 @@ class Feed(threading.Thread) :
             self.inqueue.put(newitem)           # add to output queue
             self.lasterrtime = time.time()      # record err printed
             self.lasterrmsg = errmsg
+            
+    def handleunrecognizedfeed(self, url) :
+        """
+        Handle something that is readable but might not be an RSS or XML feed.
+        Returns an error message.
+        The real purpose of this is to detect public WiFi gateways which return
+        some sign up page instead of the desired RSS feed.
+        """
+        try :
+            opener = urllib2.urlopen(url)                   # URL opener object 
+            htmltext = opener.read(100000)                  # read beginning; we only need the title
+            opener.close()                                  # close
+            tree = BeautifulSoup.BeautifulSoup(htmltext)
+            titleitem = tree.find("title")                  # find title item
+            if titleitem :
+                title = titleitem.find(text=True)           # extract HTML page title text
+                if title :
+                    s = '"%s" was received instead of the expected RSS/XML data' % (title.strip(),)
+                    return(s)                               # Return coherent message                                           
+            return("of unrecognized data instead of the expected RSS/XML data")
+            
+        except EnvironmentError as message :
+            return(str(message))                            # trouble
                                     
 #
 #    class Feeds  --  handle multiple news feeds

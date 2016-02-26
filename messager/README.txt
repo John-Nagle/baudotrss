@@ -34,6 +34,9 @@ Version 2.6:
 - Avoids printing news items more than once, even if their timestamp changes.
 - For machines with no keyboard, BREAK is now recognized, and will restart the
   news feeds from the beginning.
+  
+Version 2.9:
+- Google Voice support removed due to Google changes to service.
 
 
 This is a Python program for driving classic Baudot teletype machines such as
@@ -46,13 +49,13 @@ lines per news story.  So this is a useful demo program to leave running to driv
 a Teletype in a museum situation.  A new story appears about once an hour.  If you
 want more typing time, find a more active feed. 
 
-If a Google Voice account is available, the program allows sending and receiving
-SMS messages.
+The program supports connection to a web server which receives SMS messages from
+Twilio and relays them to this program.  The server code is not part of this package.
 
 System requirements:
 	Computer:			Intel 32-bit, with hardware serial port.  (USB to serial
 						converters will usually not work at 45.45 baud.)
-	Operating system	Windows 2000/XP. (Should work on Vista and Win7, not tested.)						
+	Operating system	Windows 7/Linux. 						
 	Python system:		2.6 or 2.7 (No 3.x yet.)
 	Required packages:	win32api
 						pyserial

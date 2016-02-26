@@ -57,27 +57,27 @@ import types
 import re
 import sgmllib
 from htmlentitydefs import name2codepoint
-import weakref							# Weak references for previous, parent, previousSibling, and tagStack
+import weakref                            # Weak references for previous, parent, previousSibling, and tagStack
 #
-#	Weakref allocation control 
+#    Weakref allocation control 
 #
-#	The following links are always weak references, to avoid internal reference loops that
-#	require extra garbage collection.
-#		self.parent
-#		self.previous
-#		self.previousSibling
-#	These are all "back links".
+#    The following links are always weak references, to avoid internal reference loops that
+#    require extra garbage collection.
+#        self.parent
+#        self.previous
+#        self.previousSibling
+#    These are all "back links".
 #
-#	backref  --  create a weak reference as a back pointer
+#    backref  --  create a weak reference as a back pointer
 #
-#	Generates a weakref proxy, but handles input of "none" or an existing weak ref.
+#    Generates a weakref proxy, but handles input of "none" or an existing weak ref.
 #
 def backref(p) :
-	if p == None :										# if none
-		return(None)									# then none
-	if isinstance(p,weakref.ProxyType) or isinstance(p,weakref.CallableProxyType) :		# if already a weak ref
-		return(p)
-	return(weakref.proxy(p))							# otherwise a new weakref
+    if p == None :                                        # if none
+        return(None)                                    # then none
+    if isinstance(p,weakref.ProxyType) or isinstance(p,weakref.CallableProxyType) :        # if already a weak ref
+        return(p)
+    return(weakref.proxy(p))                            # otherwise a new weakref
 
 #
 # This RE makes Beautiful Soup able to parse XML with namespaces.
@@ -88,6 +88,7 @@ sgmllib.tagfind = re.compile('[a-zA-Z][-_.:a-zA-Z0-9]*')
 sgmllib.charref = re.compile('&#(\d+|x[0-9a-fA-F]+);')
 
 DEFAULT_OUTPUT_ENCODING = "utf-8"
+UNICODE_REPLACEMENT_CHARACTER = unichr(0xFFFD)        # if we can't handle it, use this
 
 # First, the classes that represent markup elements.
 
@@ -107,9 +108,9 @@ class PageElement:
             self.previousSibling = backref(self.parent.contents[-1])
             self.previousSibling.nextSibling = self
 
-	def getself(self) :	
-		"""Returns strong reference to object, even if called with weak ref"""					
-		return(self)
+    def getself(self) :    
+        """Returns strong reference to object, even if called with weak ref"""                    
+        return(self)
 
     def replaceWith(self, replaceWith):        
         oldParent = self.parent
@@ -341,19 +342,19 @@ class PageElement:
         i = self
         while i:
             i = i.previous
-            yield i.getself()	# always return a strong reference
+            yield i.getself()    # always return a strong reference
 
     def previousSiblingGenerator(self):
         i = self
         while i:
             i = i.previousSibling
-            yield i.getself()	# always return a strong reference
+            yield i.getself()    # always return a strong reference
 
     def parentGenerator(self):
         i = self
         while i:
             i = i.parent
-            yield i.getself()	# always return a strong reference
+            yield i.getself()    # always return a strong reference
 
     # Utility methods
     def substituteEncoding(self, str, encoding=None):
@@ -1244,10 +1245,13 @@ class BeautifulStoneSoup(Tag, SGMLParser):
 
     def handle_charref(self, ref):
         "Handle character references as data."
-        if ref[0] == 'x':
-            data = unichr(int(ref[1:],16))
-        else:
-            data = unichr(int(ref))
+        try: 
+            if ref[0] == 'x':
+                data = unichr(int(ref[1:],16))
+            else:
+                data = unichr(int(ref))
+        except ValueError :                             # bogus or unrepresentable astral character
+            data = UNICODE_REPLACEMENT_CHARACTER        # use the replacement character
         
         if u'\x80' <= data <= u'\x9F':
             data = UnicodeDammit.subMSChar(chr(ord(data)), self.smartQuotesTo)

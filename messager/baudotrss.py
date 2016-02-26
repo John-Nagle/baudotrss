@@ -10,9 +10,14 @@
 #    John Nagle
 #    January, 2011
 #
+#
+#    Constants
+#
+DEFAULTCONFIG = "configdefault.cfg"             # default config values.
+READTIMEOUT = 1.0              # read timeout - makes read abort (control-C) work on Linux.
+
 import sys
-assert(sys.version_info >= (2,6))           # Requires Python 2.6 or later.
-sys.path.append("./googlevoice")            # for SMS access
+assert(sys.version_info >= (2,6))               # Requires Python 2.6 or later.
 import warnings
 import logging
 import optparse
@@ -20,11 +25,6 @@ import userinterface
 import ConfigParser
 import baudottty
 
-#
-#    Constants
-#
-DEFAULTCONFIG = "configdefault.cfg"             # default config values.
-READTIMEOUT = 1.0              # read timeout - makes read abort (control-C) work on Linux.
 
 #
 #    Suppress deprecation warnings.  We know feedparser and BeautifulSoup need updates.
