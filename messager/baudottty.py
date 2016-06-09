@@ -76,10 +76,10 @@ class BaudotTTY(object) :
             actualbaud = kactualbaud[actualbaud]    # remap 600 baud request to 45 baud actual, etc.
         self.charsecs = kspeedsafetymargin * (1 + 5 + 1.5) / actualbaud    # time to send one char, seconds
         self.clear()                                # reset to start state
-        self.baud = self.ser.getBaudrate()          # save serial device baud rate for flushing use
+        self.baud = self.ser.baudrate               # save serial device baud rate for flushing use
         self.conv = baudot.Baudot(charset)          # get Baudot conversion object
-        self.ser.setDTR(1)                          # DTR to 1, so we can use DTR as a +12 supply 
-        self.ser.setRTS(0)                          # motor is initially off
+        self.ser.dtr = True                         # DTR to 1, so we can use DTR as a +12 supply 
+        self.ser.rts = False                        # motor is initially off
 
     #
     #    close  --  close port
@@ -87,8 +87,8 @@ class BaudotTTY(object) :
     def close(self) :
         with self.lock :                            # lock
             if self.ser :                           # output
-                self.ser.setRTS(0)                  # stop motor
-                self.ser.setDTR(0)                  # turn off DTR, for no good reason
+                self.ser.rts = False                # stop motor
+                self.ser.dtr = False                # turn off DTR, for no good reason
                 self.motoron = False                # motor is off
                 self.ser.close()                    # close port
                 ser = None                          # release serial port
@@ -106,10 +106,10 @@ class BaudotTTY(object) :
         if self.motoron == newstate :               # if in correct state
             return
         if newstate :                               # if turning on
-            self.ser.setRTS(1)                      # turn on motor
+            self.ser.rts = True                     # turn on motor
             time.sleep(self.motorstartdelay)        # wait for motor to come up to speed
         else :
-            self.ser.setRTS(0)                      # turn off motor
+            self.ser.rts = False                    # turn off motor
         self.motoron = newstate                     # record new state
     #
     #    motorison -- true if motor is on
@@ -127,16 +127,16 @@ class BaudotTTY(object) :
     #
     def flushOutput(self) :
         self.ser.flushOutput()                      # initial flush in case output blocked and lock held
-        self.ser.setBaudrate(115200)                # set huge baud rate, 200x Teletype rate 
+        self.ser.baudrate = 115200                  # set huge baud rate, 200x Teletype rate 
         with self.lock :
             self.kybdinterrupt = True               # set keyboard interrupt
             self.ser.flushOutput()                  # flush output
             #    Temporarily shift to high baud rate to flush on platforms that don't do flushOutput properly.
             #    This is a hack for USB to serial devices with big buffers.
-            self.ser.setBaudrate(115200)            # set huge baud rate, 200x Teletype rate
+            self.ser.baudrate = 115200             # set huge baud rate, 200x Teletype rate
             ## print("Flushing using %d baud rate." % (self.ser.getBaudrate(), ))    # ***TEMP***
             time.sleep(1.0)                         # wait 500ms
-            self.ser.setBaudrate(self.baud)         # back to old baud rate
+            self.ser.baudrate = (self.baud)         # back to old baud rate
             self.outputshift = None                 # shift state unknown
             self.outputcol = None                   # column position unknown
             self.printend = time.time()             # est. printing completion time is now
