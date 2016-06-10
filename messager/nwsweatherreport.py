@@ -6,7 +6,7 @@
 #
 import urllib
 import urllib2
-import BeautifulSoup
+import bs4
 import datetime
 import calendar
 import re
@@ -226,7 +226,7 @@ class nwsxml(object) :
         The time layout is a separate item which associates timestamps with
         the forecast.
         """
-        wordedforecasts = tree.findAll("wordedforecast")    # find forecasts
+        wordedforecasts = tree.findAll("wordedForecast")    # find forecasts
         if wordedforecasts is None or len(wordedforecasts) == 0 :
             raise RuntimeError("Forecast text not found in data")
         for wordedforecast in wordedforecasts :             # for each forecast
@@ -303,7 +303,7 @@ def getnwsforecast(lat, lon, verbose=False) :
         opener = urllib2.urlopen(url)           # URL opener object 
         xmltext = opener.read()                 # read entire contents
         opener.close()                          # close
-        tree = BeautifulSoup.BeautifulStoneSoup(xmltext)
+        tree = bs4.BeautifulSoup(xmltext,"xml")
         if verbose :
             print(tree.prettify())              # print tree for debug
         forecast = nwsxml(verbose)              # get new forecast
@@ -336,10 +336,10 @@ def getziplatlong(zip, verbose=False) :
         opener = urllib2.urlopen(url)           # URL opener object 
         xmltext = opener.read()                 # read entire contents
         opener.close()                          # close
-        tree = BeautifulSoup.BeautifulStoneSoup(xmltext)
+        tree = bs4.BeautifulSoup(xmltext,"xml")
         if verbose :
             print(tree.prettify())              # print tree for debug
-        latlon = gettextitem(tree, "latlonlist")# look for lat lon item
+        latlon = gettextitem(tree, "latLonList")# look for lat lon item
         #   Format of latLon is number, number
         matches = NWSZIPRE.match(latlon)        # looking for 123.45,-345.23
         if not matches :
@@ -372,20 +372,20 @@ def getplacelatlong(city, state, verbose=False) :
         opener = urllib2.urlopen(url)           # URL opener object 
         xmltext = opener.read()                 # read entire contents
         opener.close()                          # close
-        tree = BeautifulSoup.BeautifulStoneSoup(xmltext)
+        tree = bs4.BeautifulSoup(xmltext,"xml")
         if verbose :
             print(tree.prettify())              # print tree for debug
-        features = tree.findAll("usgs")         # find all USGS features
+        features = tree.findAll("USGS")         # find all USGS features
         bestfeaturename = None                  # pick best match name
         lat = None
         lng = None
         for feature in features :               # find best matching name
-            featurename = gettextitem(feature,"feature_name")
+            featurename = gettextitem(feature,"FEATURE_NAME")
             if (bestfeaturename is None or      # pick either first or exact match
                 (city.upper() == featurename.upper())) :
                 bestfeaturename = featurename
-                lat = gettextitem(feature,"feat_latitude_nmbr")
-                lng = gettextitem(feature,"feat_longitude_nmbr")
+                lat = gettextitem(feature,"FEAT_LATITUDE_NMBR")
+                lng = gettextitem(feature,"FEAT_LONGITUDE_NMBR")
         if bestfeaturename is None :
             raise RuntimeError("City not found")
         return((None, bestfeaturename, lat, lng))

@@ -25,7 +25,7 @@ import datetime
 import httplib
 import urllib
 import urllib2
-import BeautifulSoup
+import bs4
 import feedmanager
 import msgutils
 import threading
@@ -180,7 +180,7 @@ class Twiliofeed(feedmanager.Feed) :
             req.add_header("Authorization", "Basic %s" % authstring)
             fd = urllib2.urlopen(req, data, 20.0)       # do request
             s = fd.read()
-            tree = BeautifulSoup.BeautifulStoneSoup(s)  # parse reply
+            tree = bs4.BeautifulSoup(s,"xml")           # parse reply
             fd.close()                                  # done with fd
             return(None, tree)
         except IOError as message:                      # trouble          
@@ -202,7 +202,7 @@ class Twiliofeed(feedmanager.Feed) :
                 return(self.fetcherror("Problem No. %s sending message" %
                     (status,), None))
             if tree :                                   # if reply parsed
-                tag = tree.find("status", recursive=True)
+                tag = tree.find("Status", recursive=True)
                 if tag :
                     smsstatus = tag.string              # string in 
                     if smsstatus :
@@ -267,9 +267,9 @@ class Twiliofeed(feedmanager.Feed) :
         tree = None                                     # no tree yet
         try :
             #   Extract mesages from XML
-            tree = BeautifulSoup.BeautifulStoneSoup(replyxml)  # parse XML into tree
+            tree = bs4.BeautifulSoup(replyxml,"xml")    # parse XML into tree
             #   Make sure we got XML.
-            responsetag = tree.find("response", recursive=True)   # find the top "response" tag
+            responsetag = tree.find("Response", recursive=True)   # find the top "response" tag
             if not responsetag :                        # if did not find an response tag
                 msg = self.handleunrecognizedfeed(SERVERPOLLURL)    # reread for HTML error report
                 raise IOError(msg)                      # trouble

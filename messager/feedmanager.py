@@ -23,7 +23,7 @@ import threading
 import hashlib
 import msgutils
 import urllib2
-import BeautifulSoup
+import bs4
 #
 #   Constants
 #
@@ -259,7 +259,7 @@ class Feed(threading.Thread) :
             opener = urllib2.urlopen(url)                   # URL opener object 
             htmltext = opener.read(100000)                  # read beginning; we only need the title
             opener.close()                                  # close
-            tree = BeautifulSoup.BeautifulSoup(htmltext)
+            tree = bs4.BeautifulSoup(htmltext)
             titleitem = tree.find("title")                  # find title item
             if titleitem :
                 title = titleitem.find(text=True)           # extract HTML page title text

@@ -29,7 +29,6 @@ import rfc822                                           # for date parsing
 import calendar                                         # for date parsing
 import datetime
 import urllib2
-import BeautifulSoup
 import hashlib
 #
 #    Constants
