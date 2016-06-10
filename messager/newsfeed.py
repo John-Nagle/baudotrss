@@ -255,7 +255,7 @@ class Newsfeed(feedmanager.Feed) :
         timestamp = calendar.timegm(dateparsed)             # get timestamp value
         ageinsecs = time.time() - timestamp                 # age of item in seconds
         if ageinsecs > self.maxage :                        # if too old
-            self.logger.debug("Very old feed item date: %s   %s - dropped" % (repr(date), repr(dateparsed)))
+            self.logger.debug("Very old feed item date: %s - dropped" % (repr(date)))
             return(None)
         dateparsed = datetime.datetime.fromtimestamp(timestamp)
         assert(isinstance(dateparsed, datetime.datetime))

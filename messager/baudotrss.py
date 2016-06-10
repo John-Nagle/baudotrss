@@ -70,7 +70,7 @@ def main() :
     logging.basicConfig()                                   # configure logging system
     logger = logging.getLogger('Messager')                  # main logger
     if options.verbose :
-        logger.setLevel(logging.DEBUG)                      # -d: very verbose
+        logger.setLevel(logging.DEBUG)                      # -v: very verbose
     elif options.quiet :
         logger.setlevel(logging.WARNING)                    # -q: errors only
     else :
