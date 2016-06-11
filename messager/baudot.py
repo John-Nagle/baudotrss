@@ -93,18 +93,24 @@ class Baudot(object) :
             self.tobaudottab.append((None, None))   # no data
         for i in range(len(ltrstab)) :              # build LTRS part of table
             if not ltrstab[i] is None :             # skip untranslatables
-                self.tobaudottab[ord(ltrstab[i])] = (bytes(chr(i)), Baudot.LTRS)    # 
+                self.tobaudottab[ord(ltrstab[i].lower())] = (bytearray((i,)), Baudot.LTRS)
+                self.tobaudottab[ord(ltrstab[i].upper())] = (bytearray((i,)), Baudot.LTRS) 
         for i in range(len(figstab)) :              # build FIGS part of table
             if not figstab[i] is None :             # skip untranslatables
                 shift = Baudot.FIGS                 # assume need FIGS shift
                 if ltrstab[i] == figstab[i] :       # if same char in both shifts
                     shift = None                    # never need a shift 
-                self.tobaudottab[ord(figstab[i])] = (bytes(chr(i)), shift)    # 
+                self.tobaudottab[ord(figstab[i])] = (bytearray((i,)), shift)    # 
+        for (bb,shift) in self.tobaudottab :        # all Baudot entries
+            if not (bb is None) :                   # Python 2/3 issue
+                assert(len(bb) == 1)                # must be single bytes 
 
     #
-    #    printableBaudot -- true if Baudot char advances char position
+    #   printableBaudot -- true if Baudot char advances char position
     #
-    #    Used in counting character position for carriage return purposes.
+    #   Used in counting character position for carriage return purposes.
+    #   Input is a one-byte "bytes" value
+    #   We use the tables because the Baudot value of BELL varies.
     #
     def printableBaudot(self, ch, shift) :
         chn = ord(ch)                               # for index
@@ -112,18 +118,19 @@ class Baudot(object) :
             ach = self.toasciifigstab[chn]
         else :    
             ach = self.toasciiltrstab[chn]
-        return(not (ach is None or ach < ' '))      # true if printable char 
+        return(not (ach is None or ach[0] < ord(' ')))      # true if printable char 
 
     #
-    #    chToBaudot --  convert ASCII char to Baudot
+    #   chToBaudot --  convert ASCII char to Baudot
     #
-    #    Returns (baudotchar, shiftneeded)
+    #   Input is a an ASCII char as an integer
     #
-    #    "shiftneeded" is LTRS, FIGS, or None
+    #   Returns (baudotchar, shiftneeded)
     #
-    def chToBaudot(self,ch) :
-        chn = ord(ch.upper())                       # get integer value of char
-        if chn > 127 :                              # if out of range char
+    #   "shiftneeded" is LTRS, FIGS, or None
+    #
+    def chToBaudot(self,chn) :
+        if chn > 127 or chn < 0 :                   # if out of range char
             if self.substitutechar is None :        # if no substitution char for bad chars
                 raise IndexError("Out of range character to convert to Baudot")
             chn = ord(self.substitutechar)          # use substitute char

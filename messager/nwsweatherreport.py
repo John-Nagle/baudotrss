@@ -4,14 +4,13 @@
 #   Weather reports are in Digital Weather Markup Language, an XML format.  The schema for them is
 #   http://graphical.weather.gov/xml/DWMLgen/schema/DWML.xsd
 #
-import urllib
-import urllib2
+from six.moves import urllib                # Python 2/3 support
 import bs4
 import datetime
 import calendar
 import re
 import msgutils
-import placenames                       # spell out state
+import placenames                           # spell out state
 #
 #   Constants
 #
@@ -300,7 +299,7 @@ def getnwsforecast(lat, lon, verbose=False) :
     if verbose :
         print("NWS url: %s" % url)          # show URL
     try:
-        opener = urllib2.urlopen(url)           # URL opener object 
+        opener = urllib.request.urlopen(url)    # URL opener object 
         xmltext = opener.read()                 # read entire contents
         opener.close()                          # close
         tree = bs4.BeautifulSoup(xmltext,"xml")
@@ -329,11 +328,11 @@ def getziplatlong(zip, verbose=False) :
     
     Uses NWS NDFD service.
     """
-    url = NWSZIPURL % (urllib.quote_plus(zip),)
+    url = NWSZIPURL % (urllib.parse.quote_plus(zip),)
     if verbose :
         print("NWS ZIP lookup url: %s" % (url,))          # show URL
     try:
-        opener = urllib2.urlopen(url)           # URL opener object 
+        opener = urllib.request.urlopen(url)    # URL opener object 
         xmltext = opener.read()                 # read entire contents
         opener.close()                          # close
         tree = bs4.BeautifulSoup(xmltext,"xml")
@@ -365,11 +364,11 @@ def getplacelatlong(city, state, verbose=False) :
     Uses USGS GINS service.
     """
     state = placenames.CODE_STATE.get(state, state)     # USGS requires state name, not abbreviation 
-    url = USGSGNISURL % (urllib.quote_plus(city), urllib.quote_plus(state))
+    url = USGSGNISURL % (urllib.parse.quote_plus(city), urllib.parse.quote_plus(state))
     if verbose :
         print("USGS url: %s" % (url,))          # show URL
     try:
-        opener = urllib2.urlopen(url)           # URL opener object 
+        opener = urllib.request.urlopen(url)    # URL opener object 
         xmltext = opener.read()                 # read entire contents
         opener.close()                          # close
         tree = bs4.BeautifulSoup(xmltext,"xml")

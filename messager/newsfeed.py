@@ -24,11 +24,11 @@ import msgutils
 import feedparser
 import time
 import feedmanager
-import Queue
-import rfc822                                           # for date parsing
+from six.moves import queue                             # Python 2/3 support
+import email                                            # for date parsing
+import email.utils
 import calendar                                         # for date parsing
 import datetime
-import urllib2
 import hashlib
 #
 #    Constants
@@ -42,10 +42,10 @@ NEWSMAXAGEDAYS = 30                                     # last 30 days of news o
 #
 def RFC2822dateparser(aDateString):
     """parse a RFC2822 date, including time zone: 'Sun, 28 Feb 2010 11:57:48 -0500'"""
-    dateinfo = rfc822.parsedate_tz(aDateString)         # parse date
+    dateinfo = email.utils.parsedate_tz(aDateString)    # parse date
     if dateinfo is None :                               # if none, fail
         return(None)                                    # next parser gets a chance
-    utcstamp = rfc822.mktime_tz(dateinfo)               # convert to timestamp format
+    utcstamp = email.utils.mktime_tz(dateinfo)          # convert to timestamp format
     utcdate = time.gmtime(utcstamp)                     # convert back to time tuple, but now in UT
     ####print("RFC2822dateparser: in: %s   dateinfo: %s  out: %s" % (repr(aDateString), repr(dateinfo), repr(utcdate))) ## ***TEMP***
     return(utcdate)                                     # feedparser wants UT time
@@ -125,7 +125,7 @@ class Newsfeed(feedmanager.Feed) :
         try: 
             while True :                                # drain
                 self.inqueue.get_nowait()               # get input, if any
-        except Queue.Empty:                             # when empty
+        except queue.Empty:                             # when empty
             pass                                        # done
         self.logger.info("News feed queue emptied.")
         self.markingallasread = True                    # mark all as read for one cycle            
@@ -134,7 +134,7 @@ class Newsfeed(feedmanager.Feed) :
         try: 
             while True :                                # drain
                 self.inqueue.get_nowait()               # get input, if any
-        except Queue.Empty:                             # when empty
+        except queue.Empty:                             # when empty
             pass                                        # done
         self.logger.info("News feed queue restarted.")  # restarting from beginning
         self.markingallasread = False                   # do not mark all as read
@@ -300,9 +300,9 @@ class Newsfeed(feedmanager.Feed) :
         Some news sources (esp. Reuters) will resend the same message with a new timestamp. 
         """
         m = hashlib.md5()                               # begin a hash of the fields present
-        m.update(repr(item.msgfrom))                    # source
-        m.update(repr(item.subject))                    # subject
-        m.update(repr(item.body))                       # body of msg
+        m.update(repr(item.msgfrom).encode("utf8"))     # source
+        m.update(repr(item.subject).encode("utf8"))     # subject
+        m.update(repr(item.body).encode("utf8"))        # body of msg
         item.digest = m.hexdigest()                     # get message digest as hex string, to check if seen before
         
         

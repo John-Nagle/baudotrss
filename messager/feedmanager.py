@@ -18,16 +18,25 @@ import re
 import time
 import datetime
 import types
-import Queue
+from six.moves import queue
+from six.moves import urllib
 import threading
 import hashlib
 import msgutils
-import urllib2
 import bs4
 #
 #   Constants
 #
 MINERRMSGINTERVALSECS = 120.0            # minimum interval between error msgs
+
+#
+#   isstring -- true if a string, for Python 2.7 and 3.x
+#
+def isstring(s) :
+    try :
+        return(isinstance(s,basestring))                # Python 2.7
+    except NameError :
+        return(isinstance(s,str))                       # Python 3.x
 #
 #   class FeedItem  -- one item from a feed
 #
@@ -64,7 +73,7 @@ class FeedItem(object) :
             if val is None :                            # not present
                 continue
             strval = ""                                 # convert types to strings as necessary
-            if type(val) in (types.StringType, types.UnicodeType) :
+            if isstring(val) :
                 strval = val
             elif isinstance(val, time.struct_time) :    # if time object
                 strval = time.strftime("%B %d, %I:%M %p", val)    # formatted time
@@ -109,7 +118,7 @@ class Feed(threading.Thread) :
         threading.Thread.__init__(self)                 # initialize base class
         self.logger = logger                            # logger object
         self.feedtype = feedtype                        # "NEWS" or "SMS"
-        self.inqueue = Queue.Queue()                    # input queue
+        self.inqueue = queue.Queue()                    # input queue
         self.aborting = False                           # not yet aborting
         self.lastpoll = 0.0                             # no last poll yet
         self.lastget = time.time()                      # last get request
@@ -151,7 +160,7 @@ class Feed(threading.Thread) :
                 raise item                              # raise exception to force shutdown
             self.lastitem = item                        # item currently being worked on 
             return(item)                                # otherwise just return item
-        except Queue.Empty:                             # if empty
+        except queue.Empty:                             # if empty
             return(None)                                # done
             
     def itemdonebase(self, item) :
@@ -217,9 +226,9 @@ class Feed(threading.Thread) :
         """
         m = hashlib.md5()                               # begin a hash of the fields present
         for (printname, attrname) in item.kheaderfields :    # for all header fields
-            m.update(repr(getattr(item, attrname,"")))  # add attr to hash
+            m.update(repr(getattr(item, attrname,"")).encode("utf8"))  # add attr to hash
         if item.body :
-            m.update(repr(item.body))                   # body of msg
+            m.update(repr(item.body).encode("utf8"))    # body of msg
         item.digest = m.hexdigest()                     # get message digest as hex string, to check if seen before
 
         
@@ -256,7 +265,7 @@ class Feed(threading.Thread) :
         some sign up page instead of the desired RSS feed.
         """
         try :
-            opener = urllib2.urlopen(url)                   # URL opener object 
+            opener = urllib.request.urlopen(url)            # URL opener object 
             htmltext = opener.read(100000)                  # read beginning; we only need the title
             opener.close()                                  # close
             tree = bs4.BeautifulSoup(htmltext)

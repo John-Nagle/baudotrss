@@ -38,6 +38,12 @@ Version 2.6:
 Version 2.9:
 - Google Voice support removed due to Google changes to service.
 
+Version 2.10:
+- Code modernization
+  - Support for Python 2.7 dropped.
+  - Uses "bs4" library package rather than its own copy of BeautifulSoup.
+  - Compatible with current version of "pyserial".
+  
 
 This is a Python program for driving classic Baudot teletype machines such as
 the Model 15 or Model 28.  It's usable with both KSR machines (with a keyboard)
@@ -56,8 +62,8 @@ System requirements:
 	Computer:			Intel 32-bit, with hardware serial port.  (USB to serial
 						converters will usually not work at 45.45 baud.)
 	Operating system	Windows 7/Linux. 						
-	Python system:		2.6 or 2.7 (No 3.x yet.)
-	Required packages:	win32api
+	Python system:		2.7 (No 3.x yet.)
+	Required packages:	bs4
 						pyserial
 						feedparser
 	Baudot teletype:	Model 15, 19 or 28 in proper working condition.

@@ -19,22 +19,16 @@ import threading
 import baudottty
 import nwsweatherreport                     # weather report
 import newsfeed
-
 import twiliofeed
 import feedmanager
 import time
 import re
-import Queue
+from six.moves import queue                 # Python 2/3 support
 import traceback
-import BeautifulSoup
-import ConfigParser
 
 #
 #    Globals
 #
-####reutersfeedurl = "http://feeds.reuters.com/reuters/topNews?format=xml"    # news feed as XML
-####wpostfeedurl = "http://feeds.washingtonpost.com/wp-dyn/rss/business/index_xml"
-####defaultfeedurls = [reutersfeedurl]                                # default feeds to use
 DEFAULTCONFIG = "configdefault.cfg"
 
 LONGPROMPT =    "\nType N for news, W for weather, S to send, O for off, CR to wait: "
@@ -268,7 +262,7 @@ class simpleui(object) :
         self.weathercity = (None, None)                     # state, city for weather
         self.itemprinting = None                            # ID of what's currently being printed
         self.uilock = threading.Lock()                      # lock object
-        self.inqueue = Queue.Queue()                        # input queue
+        self.inqueue = queue.Queue()                        # input queue
         #   Set global socket timeout so feed readers don't hang.
         socket.setdefaulttimeout(DEFAULTSOCKETTIMEOUT)      # prevent hangs
         #    SMS feed initialization
@@ -316,7 +310,7 @@ class simpleui(object) :
                 ch = self.inqueue.get_nowait()              # get input, if any
                 if isinstance(ch, Exception) :              # if error in thread
                     raise ch                                # reraise exception here
-        except Queue.Empty:                                 # if empty
+        except queue.Empty:                                 # if empty
             return                                          # done
 
     def waitforbreak(self) :                                # wait for a BREAK, with motor off
@@ -346,8 +340,8 @@ class simpleui(object) :
                 s = self.itemprinting.formattext()          # item text
                 errmsg = self.itemprinting.errmsg           # error message if any
                 feedtype = self.itemprinting.feed.feedtype  # feed type
-                title = title.encode('ascii','replace')
-                s = s.encode('ascii','replace')             # force to ASCII for the Teletype
+                title = title.encode('ascii','replace').decode('ascii')
+                s = s.encode('ascii','replace').decode('ascii')  # limit to ASCII for the Teletype
                 if waiting :                                # if was waiting
                     tty.doprint("\n\a")                     # wake up, ring bell
                     waiting = False                         # we have a story to print
@@ -358,9 +352,9 @@ class simpleui(object) :
                 self.sendcutmark()                          # cut paper here
                 #    Print feed title if it changed
                 if title != feed.getlasttitleprinted() :
-                    feed.setlasttitleprinted(title)    # save new title so we can tell if it changed
-                    title = tty.convertnonbaudot(title)    # convert special chars to plausible equivalents
-                    title = baudottty.wordwrap(title)        # word wrap
+                    feed.setlasttitleprinted(title)         # save new title so we can tell if it changed
+                    title = tty.convertnonbaudot(title)     # convert special chars to plausible equivalents
+                    title = baudottty.wordwrap(title)       # word wrap
                     self.logger.debug("Source: " + title)
                     tty.doprint(title )                     # print title
                     if errmsg :
@@ -532,7 +526,7 @@ class simpleui(object) :
             self.logger.error("Shutting down: " + str(message))
             self.abortthreads()                             # abort all threads
             raise
-        except (StandardError) as message :                 # if trouble
+        except (RuntimeError) as message :                 # if trouble
             self.logger.exception("Unrecoverable error, aborting: " + str(message))
             self.abortthreads()                             # abort all threads
             raise                                           # re-raise exception with other thread exited.

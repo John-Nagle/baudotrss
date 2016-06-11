@@ -144,6 +144,7 @@ class BaudotTTY(object) :
     #    _writeser  -- write bytes to device
     #
     #    Internal use only, must be locked first
+    #
     def _writeser(self, s) :
         self.ser.write(s)                           # write
         now = time.time()                           # calc time left to finish printing
@@ -159,19 +160,19 @@ class BaudotTTY(object) :
     def _writeeol(self) :
         sout = bytearray()
         if self.outputcol == 0 :
-            sout.append(baudot.Baudot.LF)           # Newline at start of line, just send LF
+            sout.extend(baudot.Baudot.LF)           # Newline at start of line, just send LF
         else :                                      # not at beginning of line
-            sout.append(baudot.Baudot.CR)           # need CR
+            sout.extend(baudot.Baudot.CR)           # need CR
             #    Add LF after CR if so configured.
             if self.eolextralf :                    # if machine needs LF on CR
-                sout.append(baudot.Baudot.LF)       # send an LF before CR
+                sout.extend(baudot.Baudot.LF)       # send an LF before CR
             #    Add extra LTRS at end of line, to allow for physical carriage movement.
             if self.eolextraltrs > 0  :             # if carriage return delay needed
                 for i in range(self.eolextraltrs) : # send extra LTRS
-                    sout.append(baudot.Baudot.LTRS) # to allow time for CR to occur
+                    sout.extend(baudot.Baudot.LTRS) # to allow time for CR to occur
                 self.outputshift = baudot.Baudot.LTRS    # now in LTRS shift
-        if sout != '':
-            self._writeser(str(sout))               # write EOL sequence
+        if len(sout) > 0:
+            self._writeser(sout)                    # write EOL sequence
         self.outputcol = 0                          # now at beginning of line
         
     #
@@ -202,7 +203,9 @@ class BaudotTTY(object) :
             if ch is None :                         # if no char, just querying for shift state
                 finalshift = self.outputshift       # return current shift state
                 return(finalshift)
+            assert(len(ch) == 1)                    # ***TEMP***
             ch = bytes(ch)                          # force to type bytes
+            assert(len(ch) == 1)                    # ***TEMP***
             self.motor(True)                        # turn on motor if needed
             if self.outputcol is None :             # if position unknown
                 self._writeeol()                    # force a CR
@@ -241,15 +244,15 @@ class BaudotTTY(object) :
     #    doprint --  print string to serial port, with appropriate conversions
     #
     def doprint(self, s) :
-        s = s.encode('ascii','replace')             # text might contain Unicode, get clean ASCII
         s = re1a.sub('',s)                          # remove all CR
         s = re1b.sub('\r',s)                        # change newline to CR
+        s = s.encode('ascii','replace')             # text might contain Unicode, get clean ASCII as bytes
         for ch in s :                               # for all chars
             if self.kybdinterrupt :                 # if interrupted
                 break                               # stop typing
-            (b, shift) = self.conv.chToBaudot(ch)   # convert char to Baudot and shift
+            (bb, shift) = self.conv.chToBaudot(ch)  # convert char to Baudot and shift
             ####print("Doprint: %s -> %2d %s" % (repr(ch), ord(b), repr(shift)))    # ***TEMP***
-            self.writebaudotch(b,shift)             # write char, updating state
+            self.writebaudotch(bb,shift)            # write char, updating state
         with self.lock :                            # critical section for kybd check
             if self.kybdinterrupt :                 # if keyboard interrupt
                 self.kybdinterrupt = False          # clear keyboard interrupt

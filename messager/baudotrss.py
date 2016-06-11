@@ -17,12 +17,13 @@ DEFAULTCONFIG = "configdefault.cfg"             # default config values.
 READTIMEOUT = 1.0              # read timeout - makes read abort (control-C) work on Linux.
 
 import sys
-assert(sys.version_info >= (2,6))               # Requires Python 2.6 or later.
+assert(sys.version_info >= (2,7))               # Requires Python 2.7 or later.
+import traceback
 import warnings
 import logging
 import optparse
 import userinterface
-import ConfigParser
+import configparser
 import baudottty
 
 
@@ -90,7 +91,7 @@ def main() :
                 raise(ValueError(
                 'Command line "%s" should be a feed URL or a config file.' 
                 % (arg,)))
-        config = ConfigParser.ConfigParser()            # read config file
+        config = configparser.ConfigParser()            # read config file
         logger.info('Configuration from "%s"' % 
             ('", "'.join(configfiles)))                 # source of config
         config.read(configfiles)                        # fetch configs
@@ -105,8 +106,8 @@ def main() :
         #   Get mandatory parts of configuration    
         baud = config.getint("teletype", "baud")            # baud rate
         port = config.get("teletype", "port")               # serial or USB port
-        if port.isdigit() :
-            port = int(port)                                # is port number (0=COM1)
+        if port.isdigit() :                                 # no longer allowed, pyserial change
+            raise ValueError('Configuration error: "port" must be a name, such as COM1 or /dev/ttyUSB0')
         charset = config.get("teletype", "charset")         # USTTY, ITA2 or Fractions
         #   Get list of feeds from config
         for (k, v) in config.items("feeds") :               # get more from config
@@ -127,7 +128,7 @@ def main() :
             return                                          # and exit
         ui = userinterface.simpleui(tty, feedurls, config, logger) # user interface
         ui.feeds.markallasread("NEWS")                      # mark all news as read
-    except (ConfigParser.Error, ValueError) as message :
+    except (configparser.Error, ValueError) as message :
         print("\n\nConfiguration error - cannot start.\n%s" % (str(message),))
         return(1)
     except EnvironmentError as message :
@@ -137,6 +138,7 @@ def main() :
         ui.runui(options.cmd)                               # run the user interface
         return(0)
     except Exception as message :                           # any trouble
+        traceback.print_exc()
         print("\n\n-----PROGRAM TERMINATED-----\n%s\n" % (str(message),))
         return(1)
 

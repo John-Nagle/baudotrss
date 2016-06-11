@@ -19,13 +19,11 @@
 #
 import sys
 import time
-import Queue
 import logging
 import datetime
-import httplib
-import urllib
-import urllib2
-import bs4
+from six.moves import urllib
+from six.moves import queue
+import xml
 import feedmanager
 import msgutils
 import threading
@@ -81,9 +79,9 @@ def doservercmd(logger, accountsid, ourphoneno, cmd, v1=None, v2=None) :
         fields["v1"] = v1
     if v2:
         fields["v2"] = v2
-    url = SERVERPOLLURL + urllib.urlencode(fields)      # construct cmd URL
+    url = SERVERPOLLURL + urllib.parse.urlencode(fields) # construct cmd URL
     logger.debug("SMS server cmd: " + url)
-    fd = urllib2.urlopen(url)                           # open url
+    fd = urllib.request.urlopen(url)                    # open url
     result = fd.read()                                  # read contents
     logger.debug("SMS server reply: " + repr(result)[:40] + "...")
     fd.close()                                          # done with open
@@ -119,7 +117,7 @@ class Twiliofeed(feedmanager.Feed) :
         self.logger = logger                            # debug og to here
         self.lastdelete = 0.0                           # time of last delete cycle
         self.lastserial = -1                            # last serial number read
-        self.donequeue = Queue.Queue()                  # queue of items to be marked "Printed"
+        self.donequeue = queue.Queue()                  # queue of items to be marked "Printed"
 
         
          
@@ -170,23 +168,27 @@ class Twiliofeed(feedmanager.Feed) :
         try :
             data = None                                 # no data yet
             if fields :                                 # if data to POST
-                data = urllib.urlencode(fields)         # encode POST data
+                data = urllib.parse.urlencode(fields)   # encode POST data
             fd = None                                   # no file handle yet
             #   Always send with basic authentication.
-            req = urllib2.Request(url)                  # empty URL request
+            req = urllib.request.Request(url)           # empty URL request
             authstring = base64.encodestring('%s:%s' % 
                 (self.accountsid, self.authtoken))
             authstring = authstring.replace('\n', '')
             req.add_header("Authorization", "Basic %s" % authstring)
-            fd = urllib2.urlopen(req, data, 20.0)       # do request
-            s = fd.read()
-            tree = bs4.BeautifulSoup(s,"xml")           # parse reply
+            fd = urllib.request.urlopen(req, data, 20.0) # do request
+            s = fd.read()                               # read reply XML
             fd.close()                                  # done with fd
+            tree = xml.etree.ElementTree.fromstring(s)  # parse into tree
             return(None, tree)
         except IOError as message:                      # trouble          
             self.logger.error("Twilio error: " + str(message))
             status = getattr(message,"code", 599)       # get HTTP fail code
             return(status, None)                        # fails
+        except xml.etree.ElementTree.ParseError as message:
+            self.logger.error("Twilio XML reply not parsable: " + str(message))
+            status = getattr(message,"code", 599)       # get expat parser fail code
+            return(status, None)
         
     def sendSMS(self, number, text) :                   # sending capability
         """
@@ -202,9 +204,8 @@ class Twiliofeed(feedmanager.Feed) :
                 return(self.fetcherror("Problem No. %s sending message" %
                     (status,), None))
             if tree :                                   # if reply parsed
-                tag = tree.find("Status", recursive=True)
-                if tag :
-                    smsstatus = tag.string              # string in 
+                for tag in tree.iterfind("Status") :    # look for Status anywhere
+                    smsstatus = tag.text                # string in 
                     if smsstatus :
                         smsstatus = smsstatus.strip().lower()
                         if smsstatus == "queued" :
@@ -267,23 +268,24 @@ class Twiliofeed(feedmanager.Feed) :
         tree = None                                     # no tree yet
         try :
             #   Extract mesages from XML
-            tree = bs4.BeautifulSoup(replyxml,"xml")    # parse XML into tree
+            tree = xml.etree.ElementTree.fromstring(replyxml)    # parse XML into tree
             #   Make sure we got XML.
-            responsetag = tree.find("Response", recursive=True)   # find the top "response" tag
-            if not responsetag :                        # if did not find an response tag
+            if not tree.tag == "Response" :             # top tag should be "Response"
                 msg = self.handleunrecognizedfeed(SERVERPOLLURL)    # reread for HTML error report
-                raise IOError(msg)                      # trouble
-            #   Find all message tags in reply. There should be one or zero.
-            messagetags = responsetag.findAll("message", recursive=True)
+                raise EnvironmentError(msg)             # trouble
+            responsetag = tree                          # response tag is top of tree
+            #   Find all message tags in Response. There should be one or zero.
+            messagetags = responsetag.findall("message")
             for messagetag in messagetags :             # for all received messages
-                self.logger.debug("SMS msg as XML: \n" + messagetag.prettify())
+                debugtext = xml.etree.ElementTree.tostring(messagetag, encoding="utf8").decode("utf8") # painful to get text
+                self.logger.debug("SMS msg as XML: \n" + debugtext)
                 fields = {}                             # fields of msg
-                for tag in messagetag.findAll(recursive=False) :  # tags at next lev
-                    s = tag.string                      # get string within tag, which may be null
+                for tag in messagetag :                 # tags at next child level
+                    s = tag.text                        # get string within tag, which may be null
                     if s :                              # if non-null
-                        v = tag.string.strip()          # get value
+                        v = tag.text.strip()            # get value
                         if v != "" :                    # if nonempty
-                            fields[tag.name.strip().lower()] = v # key, value
+                            fields[tag.tag.strip().lower()] = v # key, value
                 #   Got message
                 if not "serial" in fields :
                     raise EnvironmentError("Messaging server returned XML without a serial number")
@@ -295,7 +297,7 @@ class Twiliofeed(feedmanager.Feed) :
             # Generate error message
             self.logger.error("SMS poll reply format error: %s" % (str(message),))
             if tree :
-                self.logger.error("SMS poll reply was: %s" % (tree.prettify(),))
+                self.logger.error("SMS poll reply was: %s" % (repr(tree),))
             fields = {"errormsg" : "1", "smsbody": str(message)}
             self.handlemsg(fields)
             return(newserial)                           # no new traffic
@@ -373,7 +375,7 @@ class Twiliofeed(feedmanager.Feed) :
                 serial = item.serial                    # serial number of done item
                 reply = doservercmd(self.logger, self.accountsid, self.ourphoneno,
                     "printed", serial, serial)   
-        except Queue.Empty:                             # if empty
+        except queue.Empty:                             # if empty
             return(True)                                # success
         except IOError as message:                      # network error during cancel
             self.logerror(self.fetcherror("Network error recording message as printed", message))
