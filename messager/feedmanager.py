@@ -211,11 +211,11 @@ class Feed(threading.Thread) :
         if now - self.lastget > self.kidleinterval :     # if nobody wants data (Teletype not running)
             self.logger.debug("Off, no poll.")
             return                                       # nothing to do
-        self.logger.debug("Next %s poll in %1.1fs." % (self.feedtype, timetopoll))
+        self.logger.debug("Next %s (%s) poll in %1.1fs." % (self.feedtype, self.gettitle(), timetopoll))
         if timetopoll >= 0.0 :                           # if too soon
             return
         #    Time to do a poll
-        self.logger.info("Polling %s" % (self.feedtype,))
+        self.logger.info("Polling %s (%s)" % (self.feedtype, self.gettitle(),))
         self.fetchitems()                                # ask feed for some items
         self.lastpoll = time.time()                      # wait a full poll interval before asking again
         
@@ -291,6 +291,7 @@ class Feeds(object) :
 
     def addfeed(self, feed) :                           # add a feed
         self.feeds.append(feed)                         # add a feed
+        feed.daemon = True                              # make feed a daemon, so it will abort if main does
         feed.start()                                    # start the feed running
 
     def abort(self) :                                   # abort all feeds

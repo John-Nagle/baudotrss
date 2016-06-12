@@ -515,6 +515,7 @@ class simpleui(object) :
                 self.logger.debug("No keyboard configured.")# no keyboard
                 if initialcmd is None :                     # if no initial command
                     initialcmd = "N"                        # read news, forever.
+            self.readtask.daemon = True                     # don't let read task survive control-C
             self.readtask.start()                           # start input
             self.uiloop(initialcmd)                         # run main UI loop
             
