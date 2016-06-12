@@ -192,7 +192,7 @@ class uireadtask(threading.Thread) :
             for b in s :
                 istate = self.flushcheck()                  # do flushing check
                 if istate != self.READING :                 # if not reading
-                    if b == '\0' :                          # if received a NULL when not reading
+                    if b == baudot.Baudot.NULL :            # if received a NULL when not reading
                         self.owner.logger.info("BREAK detected")            # treat as a break
                         tty.flushOutput()                   # Flush whatever was printing
                         break                               # ignore remaining input
@@ -202,7 +202,7 @@ class uireadtask(threading.Thread) :
                 shift = tty.writebaudotch(None, None)       # get current shift state
                 if shift is None :                          # if none
                     shift = baudot.Baudot.LTRS              # assume LTRS
-                if not (b in ['\0',baudot.Baudot.LF]) :     # if not (null or LF), echo char.
+                if not (b in [baudot.Baudot.NULL, baudot.Baudot.LF]) :     # if not (null or LF), echo char.
                     if halfduplex :
                         #    Update shift in half duplex.  This needs to be synched better between input and output.
                         if b == baudot.Baudot.LTRS :        # if LTRS
@@ -431,7 +431,7 @@ class simpleui(object) :
                 self.readtask.acceptinginput(False)         # no longer accepting input
                 return(instr)                               # return string
 
-            except Queue.Empty:                             # if timeout
+            except queue.Empty:                             # if timeout
                 self.readtask.acceptinginput(False)         # no longer accepting input
                 raise                                       # reraise Empty
 
@@ -470,7 +470,7 @@ class simpleui(object) :
                             1,simpleui.IDLETIMEOUT)
                     else :                                  # no keyboard
                         cmd = initialcmdin                  # do initial command again
-                except Queue.Empty :                        # if no-input timeout
+                except queue.Empty :                        # if no-input timeout
                     self.tty.doprint('\n')
                     self.waitfortraffic(self.feeds)         # wait for traffic                
                     continue                                # and prompt again

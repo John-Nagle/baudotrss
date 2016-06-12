@@ -15,6 +15,7 @@
 #
 #    This module just handles the code conversions.  Machine handling is in "baudottty".
 #
+#
 #    J. Nagle
 #    February, 2009
 #
@@ -22,25 +23,26 @@
 #    class Baudot --  convert to and from Baudot for one printer.
 #
 class Baudot(object) :
-    FIGS = b'\x1b'                                  # FIGS/LTRS shift chars in Baudot
-    LTRS = b'\x1f'
-    LF = b'\x02'                                    # LF in Baudot
-    CR = b'\x08'                                    # CR in Baudot
-    SPACE = b'\x04'                                 # SPACE in Baudot
-    NULL = b'\x00'                                  # NULL in Baudot
+                                                # control chars as integer constants
+    FIGS =  0x1b                                # FIGS/LTRS shift chars in Baudot
+    LTRS =  0x1f
+    LF =    0x02                                # LF in Baudot
+    CR =    0x08                                # CR in Baudot
+    SPACE = 0x04                                # SPACE in Baudot
+    NULL =  0x00                                # NULL in Baudot
     #    Tables for US TTY code.  There are some other alphabets, and other options for the FIGS shift.
     USTTYltrs = [
-        b'\0',b'E',b'\n',b'A',b' ',b'S',b'I',b'U',b'\r',b'D',b'R',b'J',b'N',b'F',b'C',b'K',
-        b'T',b'Z',b'L',b'W',b'H',b'Y',b'P',b'Q',b'O',b'B',b'G',None,b'M',b'X',b'V',None]
+        '\0','E','\n','A',' ','S','I','U','\r','D','R','J','N','F','C','K',
+        'T','Z','L','W','H','Y','P','Q','O','B','G',None,'M','X','V',None]
     USTTYfigs = [
-        b'\0',b'3',b'\n',b'-',b' ',b'\a',b'8',b'7',b'\r',b'$',b'4',b'\'',b',',b'!',b':',b'(',
-        b'5',b'"',b')',b'2',b'#',b'6',b'0',b'1',b'9',b'?',b'&',None,b'.',b'/',b';',None]
+        '\0','3','\n','-',' ','\a','8','7','\r','$','4','\'',',','!',':','(',
+        '5','"',')','2','#','6','0','1','9','?','&',None,'.','/',';',None]
         
     #   Tables for ITA2 code.  Minor differences from USTTY.  Apostrophe and Bell are reversed.
     ITA2ltrs = USTTYltrs
     ITA2figs = [
-        b'\0',b'3',b'\n',b'-',b' ',b'\'',b'8',b'7',b'\r',b'$',b'4',b'\a',b',',b'!',b':',b'(',
-        b'5',b'"',b')',b'2',b'#',b'6',b'0',b'1',b'9',b'?',b'&',None,b'.',b'/',b';',None]
+        '\0','3','\n','-',' ','\'','8','7','\r','$','4','\a',',','!',':','(',
+        '5','"',')','2','#','6','0','1','9','?','&',None,'.','/',';',None]
     
     
     #   The Fractions font.  This has 1/8, 1/4, 3/8, 1/2, 5/8, 3/4, and 7/8,
@@ -48,8 +50,8 @@ class Baudot(object) :
     #   ":", "!", ";", "(", ")", ",", and ".".  Also, "?" moves.
     FractionsLtrs = USTTYltrs
     FractionsFigs = [
-        b'\0',b'3',b'\n',b'-',b' ',b'\a',b'8',b'7',b'\r',b'$',b'4',b'\'',None,None,None,None,
-        b'5',b'"',None,b'2',b'#',b'6',b'0',b'1',b'9',None,b'&',None,b'?',b'/',None,None]
+        '\0','3','\n','-',' ','\a','8','7','\r','$','4','\'',None,None,None,None,
+        '5','"',None,'2','#','6','0','1','9',None,'&',None,'?','/',None,None]
        
     CHARSETS = {                                    # character sets by name
             "USTTY": (USTTYltrs, USTTYfigs),
@@ -83,7 +85,7 @@ class Baudot(object) :
         """
         return(self.charset)
                 
-    def buildconversion(self, ltrstab, figstab, substitutechar = b'?') : # build and set conversion table
+    def buildconversion(self, ltrstab, figstab, substitutechar = '?') : # build and set conversion table
         self.toasciiltrstab = ltrstab               # set letters and figures tables
         self.toasciifigstab = figstab
         self.substitutechar = substitutechar        # set substitute char (ASCII)
@@ -93,17 +95,17 @@ class Baudot(object) :
             self.tobaudottab.append((None, None))   # no data
         for i in range(len(ltrstab)) :              # build LTRS part of table
             if not ltrstab[i] is None :             # skip untranslatables
-                self.tobaudottab[ord(ltrstab[i].lower())] = (bytearray((i,)), Baudot.LTRS)
-                self.tobaudottab[ord(ltrstab[i].upper())] = (bytearray((i,)), Baudot.LTRS) 
+                self.tobaudottab[ord(ltrstab[i].lower())] = (i, Baudot.LTRS)
+                self.tobaudottab[ord(ltrstab[i].upper())] = (i, Baudot.LTRS) 
         for i in range(len(figstab)) :              # build FIGS part of table
             if not figstab[i] is None :             # skip untranslatables
                 shift = Baudot.FIGS                 # assume need FIGS shift
                 if ltrstab[i] == figstab[i] :       # if same char in both shifts
                     shift = None                    # never need a shift 
-                self.tobaudottab[ord(figstab[i])] = (bytearray((i,)), shift)    # 
+                self.tobaudottab[ord(figstab[i])] = (i, shift)    # 
         for (bb,shift) in self.tobaudottab :        # all Baudot entries
             if not (bb is None) :                   # Python 2/3 issue
-                assert(len(bb) == 1)                # must be single bytes 
+                assert(isinstance(bb,int))          # must be int 
 
     #
     #   printableBaudot -- true if Baudot char advances char position
@@ -112,13 +114,12 @@ class Baudot(object) :
     #   Input is a one-byte "bytes" value
     #   We use the tables because the Baudot value of BELL varies.
     #
-    def printableBaudot(self, ch, shift) :
-        chn = ord(ch)                               # for index
+    def printableBaudot(self, chn, shift) :
         if shift == Baudot.FIGS :                   # convert to ASCII, to find out if printable
             ach = self.toasciifigstab[chn]
         else :    
             ach = self.toasciiltrstab[chn]
-        return(not (ach is None or ach[0] < ord(' ')))      # true if printable char 
+        return(not (ach is None or ach < ' '))      # true if printable char 
 
     #
     #   chToBaudot --  convert ASCII char to Baudot
@@ -143,15 +144,15 @@ class Baudot(object) :
         return(b)
 
     #
-    #    chToASCII  --  convert one char to ASCII
+    #    chToASCII  --  convert one Baudot char to ASCII
     #
+    #    Input is a Baudot character as an int.
     #    Returns NULL for Baudot characters with no ASCII equivalent (LTRS, FIGS)
     #
     #    Caller must know the shift state.
     #
-    def chToASCII(self, b, shift) :
-        bn = ord(b)                                 # convert to integer
-        if bn > 32 :
+    def chToASCII(self, bn, shift) :
+        if bn > 32 or bn < 0:                       # if out of range for Baudot
             if self.substitutechar is None :        # if no substitution char for bad chars
                 raise IndexError("Out of range character to convert to ASCII")
             return(self.substitutechar)             # use substitute char
@@ -160,8 +161,7 @@ class Baudot(object) :
         else :
             ch = self.toasciiltrstab[bn]            # convert letter to ASCII
         if ch is None :                             # if no ASCII equivalent
-            if self.substitutechar is None :        # if no substitution char for bad chars
-                raise IndexError("Unknown character to convert to ASCII")
-            return(self.substitutechar)             # use substitute char
+            return(None)                            # use substitute char
+        assert(isinstance(ch, str))                 # ***TEMP***
         return(ch)
                 
