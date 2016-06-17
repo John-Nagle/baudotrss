@@ -102,10 +102,11 @@ class Baudot(object) :
                 shift = Baudot.FIGS                 # assume need FIGS shift
                 if ltrstab[i] == figstab[i] :       # if same char in both shifts
                     shift = None                    # never need a shift 
-                self.tobaudottab[ord(figstab[i])] = (i, shift)    # 
+                self.tobaudottab[ord(figstab[i])] = (i, shift)    #
+        assert(len(self.tobaudottab) == 128)        # length check 
         for (bb,shift) in self.tobaudottab :        # all Baudot entries
             if not (bb is None) :                   # Python 2/3 issue
-                assert(isinstance(bb,int))          # must be int 
+                assert(isinstance(bb,int))          # must be int
 
     #
     #   printableBaudot -- true if Baudot char advances char position
@@ -131,12 +132,14 @@ class Baudot(object) :
     #   "shiftneeded" is LTRS, FIGS, or None
     #
     def chToBaudot(self,chn) :
+        if isinstance(chn, str) :                   # if string
+            chn = ord(chn)                          # make int
         if chn > 127 or chn < 0 :                   # if out of range char
             if self.substitutechar is None :        # if no substitution char for bad chars
                 raise IndexError("Out of range character to convert to Baudot")
             chn = ord(self.substitutechar)          # use substitute char
         b = self.tobaudottab[chn]                   # convert to Baudot and shift
-        if b[0] is None :                           # if no conversion available
+        if b is None :                              # if no conversion available
             if self.substitutechar is None :        # if no substitution char for bad chars
                 raise IndexError("Unknown character to convert to Baudot")
             chn = ord(self.substitutechar)          # use substitute char

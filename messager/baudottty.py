@@ -293,13 +293,7 @@ class BaudotTTY(object) :
             s = BaudotTTY.re6.sub(" # # # ",s)      # stops
             s = BaudotTTY.re7.sub(" -- ",s)         # other punctuation
         return(s)
-
-
-
-            
-            
         
-
 #
 #    Non-class utility functions
 #

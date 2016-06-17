@@ -202,7 +202,7 @@ class Twiliofeed(feedmanager.Feed) :
             if status :
                 return(self.fetcherror("Problem No. %s sending message" %
                     (status,), None))
-            if tree :                                   # if reply parsed
+            if tree is not None:                        # if reply parsed
                 ####print("Got reply tree: \n" + xml.etree.ElementTree.tostring(tree, encoding="unicode", method="xml")) # ***TEMP***
                 for tag in tree.iter("Status") :        # look for Status anywhere
                     print("Got status.")                # ***TEMP***

@@ -122,7 +122,7 @@ def sendviasms(ui) :
         return
     sendtext = formatforsms(sendtext)                       # apply upper/lower case SMS conventions
     ui.logger.info("Sending to %s: %s" % (sendto, sendtext))    # logging
-    reply = ui.smsmsgfeed.sendSMS(sendto, sendtext)
+    reply = ui.smsmsgfeed.sendSMS(sendto,    sendtext)
     if reply is None :                                      # if no error
         reply = "DONE"                                      # although sender says OK even when number not validated
     tty.doprint("\n" + reply + '\n')                        # print reply    
@@ -196,6 +196,7 @@ class uireadtask(threading.Thread) :
                 continue                                    # do nothing
             for b in s :
                 istate = self.flushcheck()                  # do flushing check
+                ####print("UI read: '%s' state %d" % (repr(b), istate))        # ***TEMP***
                 if istate != self.READING :                 # if not reading
                     if b == baudot.Baudot.NULL :            # if received a NULL when not reading
                         self.owner.logger.info("BREAK detected")            # treat as a break

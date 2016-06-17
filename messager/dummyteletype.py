@@ -14,7 +14,7 @@ import baudot
 #
 #   Constants
 #
-ESC = 0x1B                                         # ESC char, ASCII/UNICODE
+ESC = 0x1b                                          # ESC char, ASCII/UNICODE
         
 #
 #   Dummyteletype  -- dummy serial object
@@ -55,6 +55,7 @@ class Dummyteletype(object) :                       # really should inherit from
                 self.outshift = bb
                 continue
             ch = self.baudot.chToASCII(bb, self.outshift) # convert to ASCII            
+            ####self.logger.info("Output as Baudot: %s <- %d (shift %s)" % (ch, bb, self.outshift))  # ***TEMP***
             if not ch is None :                 
                 if ch in ['\n','\r'] :
                     self.flushOutput()              # display if anything available
@@ -71,23 +72,27 @@ class Dummyteletype(object) :                       # really should inherit from
         
         ESC sends a break. 
         
-        ***NEEDS WORK*** - hard to send plain CR.       
+        Anything other than a single char has a CR appended.     
         """
         intext = input()                            # Baudot input as string without trailing null
         self.flushOutput()                          # flush any pending output
         baudotread = bytearray()                    # assemble bytes
         intexta = intext.encode("ASCII","replace")  # convert to bytes
-        self.logger.info('Input typed: "%s" -> "%s"' % (intext, repr(intexta)))  # ***TEMP***  
         for inbyte in intexta :                     # for all input chars
-            if inbyte == ESC :                      # if ESC character, simulate BREAK
-                (bb, shift) = (0,None)              # BREAK
+            ####self.logger.info("Keyboard char: %s" % (repr(inbyte),)) # ***TEMP***
+            if inbyte == ESC or inbyte == chr(ESC): # Python 2/3 silliness
+                self.logger.info("Keyboard simulated BREAK")
+                (bb, shift) = (0,None)              # If ESC char, simulate BREAK
             else :
-                 (bb,shift) = self.baudot.chToBaudot(inbyte)  # convert ASCII char to Baudot
+                (bb, shift) = self.baudot.chToBaudot(inbyte)  # convert ASCII char to Baudot
             if (not (shift is None)) and shift != self.inshift : # if shifting implied
                 baudotread.append(shift)            # put LTRS or FIGS in output
                 self.inshift = shift
+            if bb is None :
+                self.logger.error("Cannot type %s on a Baudot keyboard." % (repr(inbyte),))
+                continue
             baudotread.append(bb)                   # add baudot char
-        if len(baudotread) != 1 :                    # if not a single char, 
+        if len(baudotread) != 1 :                   # if not a single char, 
             baudotread.append(baudot.Baudot.CR)     # add an ending CR in Baudot
         return(baudotread)                            
         
