@@ -168,17 +168,23 @@ class Twiliofeed(feedmanager.Feed) :
         try :
             data = None                                 # no data yet
             if fields :                                 # if data to POST
-                data = urllib.parse.urlencode(fields)   # encode POST data
+                data = urllib.parse.urlencode(fields).encode("ascii")   # encode POST data
             fd = None                                   # no file handle yet
             #   Always send with basic authentication.
             req = urllib.request.Request(url)           # empty URL request
-            authstring = base64.encodestring('%s:%s' % 
-                (self.accountsid, self.authtoken))
-            authstring = authstring.replace('\n', '')
-            req.add_header("Authorization", "Basic %s" % authstring)
+            ######authstring = base64.encodestring('%s:%s' % (self.accountsid, self.authtoken))
+            authstring = '%s:%s' %  (self.accountsid, self.authtoken) # compose authorization string
+            ####print('Auth string 1: "' + authstring + '"')  # ***TEMP***
+            ####authstring = authstring.replace('\n', '')
+            ####print('Auth string 2: "' + authstring + '"')  # ***TEMP***
+            authbytes = base64.b64encode(authstring.encode("ascii")) # str->ascii->base64
+            ####print('Auth bytes: "' + authbytes.decode('ascii') + '"') # ***TEMP***
+            ####authbytes = authstring # ***TEMP***
+            req.add_header("Authorization", "Basic ".encode('ascii') + authbytes)
             fd = urllib.request.urlopen(req, data, 20.0) # do request
             s = fd.read()                               # read reply XML
             fd.close()                                  # done with fd
+            ####print("Twilio reply: %s" % (s.decode("utf-8"),)) # ***TEMP***
             tree = xml.etree.ElementTree.fromstring(s)  # parse into tree
             return(None, tree)
         except IOError as message:                      # trouble          
@@ -204,7 +210,9 @@ class Twiliofeed(feedmanager.Feed) :
                 return(self.fetcherror("Problem No. %s sending message" %
                     (status,), None))
             if tree :                                   # if reply parsed
-                for tag in tree.iterfind("Status") :    # look for Status anywhere
+                ####print("Got reply tree: \n" + xml.etree.ElementTree.tostring(tree, encoding="unicode", method="xml")) # ***TEMP***
+                for tag in tree.iter("Status") :        # look for Status anywhere
+                    print("Got status.")                # ***TEMP***
                     smsstatus = tag.text                # string in 
                     if smsstatus :
                         smsstatus = smsstatus.strip().lower()

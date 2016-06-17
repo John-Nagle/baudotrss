@@ -60,6 +60,7 @@ class Dummyteletype(object) :                       # really should inherit from
                     self.flushOutput()              # display if anything available
                 else :
                     self.outline = self.outline + ch # add to output line
+        self.inshift = self.outshift                # keep both sides in sync
             
         
     def read(self) :
@@ -68,21 +69,26 @@ class Dummyteletype(object) :                       # really should inherit from
         
         Assumes ASCII keyboard.
         
-        ***Need some way to simulate BREAK***
+        ESC sends a break. 
+        
+        ***NEEDS WORK*** - hard to send plain CR.       
         """
-        intext = input()                            # Baudot input as string
+        intext = input()                            # Baudot input as string without trailing null
         self.flushOutput()                          # flush any pending output
         baudotread = bytearray()                    # assemble bytes
-        intexta = intext.encode("ASCII","replace")  # convert to bytes  
+        intexta = intext.encode("ASCII","replace")  # convert to bytes
+        self.logger.info('Input typed: "%s" -> "%s"' % (intext, repr(intexta)))  # ***TEMP***  
         for inbyte in intexta :                     # for all input chars
             if inbyte == ESC :                      # if ESC character, simulate BREAK
                 (bb, shift) = (0,None)              # BREAK
             else :
-                (bb,shift) = self.baudot.chToBaudot(inbyte)  # convert ASCII char to Baudot
+                 (bb,shift) = self.baudot.chToBaudot(inbyte)  # convert ASCII char to Baudot
             if (not (shift is None)) and shift != self.inshift : # if shifting implied
                 baudotread.append(shift)            # put LTRS or FIGS in output
                 self.inshift = shift
             baudotread.append(bb)                   # add baudot char
+        if len(baudotread) != 1 :                    # if not a single char, 
+            baudotread.append(baudot.Baudot.CR)     # add an ending CR in Baudot
         return(baudotread)                            
         
     def close() :

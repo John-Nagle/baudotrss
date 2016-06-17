@@ -65,62 +65,67 @@ def printweather(ui) :
 #    Upper case first letter, and first letter after each period or question mark
 #
 def formatforsms(s) :
-    uc = True                            # Upper case if on
-    out = ""                            # accum output string here
-    for ch in s :                        # for all chars
-        if ch in [".", "!", "?"] :        # These characters force upper case.
+    uc = True                                               # Upper case if on
+    out = ""                                                # accum output string here
+    for ch in s :                                           # for all chars
+        if ch in [".", "!", "?"] :                          # These characters force upper case.
             uc = True
-        elif uc and not ch.isspace() :    # if upper case mode and not space
-            ch = ch.upper()                # make upper case
-            uc = False                    # once only
+        elif uc and not ch.isspace() :                      # if upper case mode and not space
+            ch = ch.upper()                                 # make upper case
+            uc = False                                      # once only
         else :
-            ch = ch.lower()                # otherwise lower case
+            ch = ch.lower()                                 # otherwise lower case
         out += ch
     return(out)
 #
 #    sendviasms  -- send SMS message
 #
-re1 = re.compile(r'\D')                    # recognize non-digits
+re1 = re.compile(r'\D')                                     # recognize non-digits
 #
 def sendviasms(ui) :
+    ui.logger.debug("Beginning SMS message entry.")
     tty = ui.tty
     if ui.smsmsgfeed is None :
         tty.doprint("\a" + "NO MESSAGING ACCOUNT, CANNOT SEND." + '\n')        # print reply
-        return                                        # can't do that
+        return                                              # can't do that
     numchars = ['0','1','2','3','4','5','6','7','8','9','0','.','-']    # acceptable in phone number
     sendto = ui.prompt("To No.: ",numchars,25)
-    if sendto is None :                                # if no message
-        return                                        # ignore
+    if sendto is None :                                     # if no message
+        ui.logger.info("SMS send phone number is empty.")
+        return                                              # ignore
     #    Check for reply to number from previous message
     if len(sendto) == 1 and sendto[0] in ['.','-'] : 
         if ui.smsmsgfeed.msgfrom : 
-            sendto = ui.smsmsgfeed.msgfrom            # use previous number
-            tty.doprint("To No.: " + sendto + "\n")    # show number being sent to
+            sendto = ui.smsmsgfeed.msgfrom                  # use previous number
+            tty.doprint("To No.: " + sendto + "\n")         # show number being sent to
         else :
             tty.doprint("\aThere is no message to which to reply.\n")
             return
-    sendto = re1.sub('',sendto)                        # remove any non-digit chars
-    if len(sendto) < 7 :                            # if too short
-        return                                        # ignore
-    sendtext = None                                    # no text yet
-    while True :                                    # accumulate text
-        s = ui.prompt(": ",None,70)                    # get text line
-        if s is None :                                # if no message
+    sendto = re1.sub('',sendto)                             # remove any non-digit chars
+    if len(sendto) < 7 :                                    # if too short
+        ui.logger.info('SMS phone number "%s" too short.' % (sendto,))
+        return                                              # ignore
+    sendtext = None                                         # no text yet
+    while True :                                            # accumulate text
+        s = ui.prompt(": ",None,70)                         # get text line
+        if s is None :                                      # if no message
+            ui.logger.debug('SMS send text is empty. (1)')
             return
-        if s == '' :                                # if blank line
-            break                                    # done
-        if sendtext is None  :                        # if first line
-            sendtext = s                            # now we have a string
+        if s == '' :                                        # if blank line
+            break                                           # done
+        if sendtext is None  :                              # if first line
+            sendtext = s                                    # now we have a string
         else :
-            sendtext += '\n' + s                        # accum lines
-    if sendtext is None :                            # if nothing to send
+            sendtext += '\n' + s                            # accum lines
+    if sendtext is None :                                   # if nothing to send
+        ui.logger.info("SMS send text is empty.")
         return
-    sendtext = formatforsms(sendtext)                # apply upper/lower case SMS conventions
+    sendtext = formatforsms(sendtext)                       # apply upper/lower case SMS conventions
     ui.logger.info("Sending to %s: %s" % (sendto, sendtext))    # logging
     reply = ui.smsmsgfeed.sendSMS(sendto, sendtext)
-    if reply is None :                                # if no error
-        reply = "DONE"                                # although Google Voice says OK even when number not validated
-    tty.doprint("\n" + unicode(reply) + '\n')        # print reply    
+    if reply is None :                                      # if no error
+        reply = "DONE"                                      # although sender says OK even when number not validated
+    tty.doprint("\n" + reply + '\n')                        # print reply    
 
 
 #
@@ -400,6 +405,7 @@ class simpleui(object) :
         instr = ''                                          # input string
         while True: 
             try: 
+                self.logger.debug('Prompting for input "%s"' % (s,))
                 self.tty.doprint(s)                         # output prompt
                 self.tty.writebaudotch(shift,None)          # get into appropriate shift
                 self.draininput()                           # drain any input
