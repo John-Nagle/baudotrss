@@ -12,6 +12,11 @@ import re
 import msgutils
 import placenames                           # spell out state
 #
+try :                                       # Python 3 obnoxiousness
+    unicode("a")
+except:
+    unicode = str                           # they could have made it a synonym, but no
+#
 #   Constants
 #
 #   Prototype URL for fetching weather via latitude and longitude
