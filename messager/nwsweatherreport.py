@@ -5,12 +5,15 @@
 #   http://graphical.weather.gov/xml/DWMLgen/schema/DWML.xsd
 #
 from six.moves import urllib                # Python 2/3 support
-import bs4
+import xml
+import xml.etree
+import xml.etree.ElementTree
 import datetime
 import calendar
 import re
 import msgutils
 import placenames                           # spell out state
+import traceback
 #
 try :                                       # Python 3 obnoxiousness
     unicode("a")
@@ -24,17 +27,40 @@ NWSPROTOURL = "http://forecast.weather.gov/MapClick.php?lat=%1.4f&lon=%1.4f&unit
 #
 #   Utility functions
 #
+#
+#   prettify -- convert to string
+#
+def prettify(tree) :
+    """
+    Convert to string.
+    Portable for Python 2/3
+    No line breaks or indentation, unfortunately.
+    """
+    return(xml.etree.ElementTree.tostring(tree, encoding="utf8").decode("utf8"))   # portable for Python 2/3
+     
 def gettextitem(tree, key) :
     """
     Look for <key>text</key> in tree and return simple text.
     """
     item = tree.find(key)                   # find containing XML item
-    if not item :                           # if no find
-        raise RuntimeError('XML document did not contain an expected "%s" item.' % (key,))
-    text = item.find(text=True)             # find text contained in XML item      
-    if not text :                           # if no find
+    if item is None :                       # if no find
+        raise RuntimeError('XML document did not contain an expected "%s" item within "%s".' % (key, tree.tag))
+    text = item.text                        # find text contained in XML item      
+    if text is None :                       # if no find
         raise RuntimeError('XML document did not contain text for an expected "%s" item.' % (key,))
     return(text.strip())
+#
+#   findfirst
+#
+def findfirst(tree, key) :
+    """
+    Find first matching item at any depth
+    
+    bs4 has this, but ElementTree does not
+    """
+    for item in tree.iter(key) :            # depth first search
+        return(item)                        # first hit
+    return(None)
 #
 #   class UTC -- a time zone item for UTC
 #
@@ -136,46 +162,62 @@ class nwsxml(object) :
         Parse forecast header info - location, time, etc.
         """
         #   Make sure this is a proper forecast document
-        dwmlitem = tree.find("dwml")                        # should be Digital Weather Markup Language
+        if tree.tag == "dwml" :
+            dwmlitem = tree
+        else :
+            dwmlitem = tree.find("dwml")                        # should be Digital Weather Markup Language
         if not dwmlitem :                                   # This isn't a valid weather report
             msg = "Weather forecast not found"              # note problem
             titleitem = tree.find("title")                  # probably HTML
             if titleitem :                                  # pull title from HTML if present
-                titletext = titleitem.find(text=True)
-                if titletext :
+                titletext = titleitem.text
+                if titletext is not None:
                     msg = titletext
             raise RuntimeError(msg)                         # fails
+        #   Process header. Looking for <dwml><head><product>
+        headitem = dwmlitem.find("head")
+        if headitem is None :
+            raise RuntimeError("No forecast head item found")
+        productitem = headitem.find("product")              # find product item
+        if productitem is None :
+            raise RuntimeError("No forecast product item found")
         #   Get creation date/time
-        creationitem = tree.find("creation-date")           # timestamp item 
-        if not creationitem :
+        creationitem = productitem.find("creation-date")           # timestamp item 
+        if creationitem is None :
             raise RuntimeError("No forecast creation date found")
-        creationtime = creationitem.find(text=True)         # get period text, which is a timestamp
+        creationtime = creationitem.text                    # get period text, which is a timestamp
         if creationtime is None :
             raise RuntimeError("No forecast creation date/time")
         self.creationtime = parseisotime(creationtime.strip()) # convert to timestamp
+        #   Process data.  Looking for <dwml><data type=forecast>
         #   Get location name
-        locitem = tree.find("data", type="forecast")        # find forecast item
-        if not locitem :
+        dataitem = dwmlitem.find("data")                    # find forecast item
+        if dataitem is None :
+            raise RunTimeError("No data item")
+        if dataitem.attrib.get("type") != "forecast" :
             raise RuntimeError("No forecast data item")
+        locitem = dataitem.find("location")
+        if locitem is None :
+            raise RuntimeError("No location item")
         pointitem = locitem.find("point")                   # point item within forecast
-        if not pointitem :
+        if pointitem is None :
             raise RuntimeError("No location point data item")
+        self.latitude = pointitem.attrib.get("latitude")    # get fields of interest
+        self.longitude = pointitem.attrib.get("longitude")
         cityitem = locitem.find("city")                     # city item within point
-        self.latitude = pointitem["latitude"]               # get fields of interest
-        self.longitude = pointitem["longitude"]
-        if cityitem :
-            state = cityitem['state']
-            city = cityitem.find(text=True)                 # get city name
-            if not city :
+        if cityitem is not None :
+            state = cityitem.attrib.get('state')
+            city = cityitem.text                            # get city name
+            if city is None:
                 raise RuntimeError("No city name")
             state = placenames.CODE_STATE.get(state, state) # spell out state name if possible
             self.location = city + ", " + state
         else :                                              # no city, use NWS area description
             areaitem = locitem.find("area-description")     # go for area description
-            if not areaitem :
+            if areaitem is None :
                 raise RuntimeError("No city or area item") 
-            area = areaitem.find(text=True)                 # "6 Miles ESE Hidden Valley Lake CA"
-            if not area :
+            area = areaitem.text                            # "6 Miles ESE Hidden Valley Lake CA"
+            if area is None :
                 raise RuntimeError("No area description")
             print("Area: " + unicode(area))                 # ***TEMP***
             self.location = area                            # use NWS area description
@@ -187,11 +229,8 @@ class nwsxml(object) :
         """
         timeitemlist = []                                   # accumulate time items here
         for timeitem in timeitems :                         # for time items in this set         
-            try :
-                periodname = timeitem["period-name"]        # get period name
-            except KeyError:
-                periodname = None                           # OK, no period name.  Some items don't have them
-            periodtime = timeitem.find(text=True)           # get period text, which is a timestamp
+            periodname = timeitem.attrib.get("period-name", None) # get period name
+            periodtime = timeitem.text                      # get period text, which is a timestamp
             if periodtime is None :
                 raise RuntimeError("No period date/time in time item")
             if periodtime.strip() == "NA" :                 # if any time not available
@@ -208,16 +247,16 @@ class nwsxml(object) :
         { key: (perioddatetime, periodname), ... }
         """
         timelayouts = {}                                    # key, parse tree
-        timelayouttrees = tree.findAll("time-layout")       # find all time layouts
+        timelayouttrees = tree.iter("time-layout")          # find all time layouts
         for timelayouttree in timelayouttrees :             # for all trees
             keytag = timelayouttree.find("layout-key")      # find layout key
             if keytag is None :
                 raise RuntimeError("No 'time-layout' tag found in time layout")
-            key = keytag.findAll(text=True)                 # get text
-            if key is None or len(key) != 1 :               # must be a single text item
+            key = keytag.text                               # get text
+            if key is None :                                # must be a single text item
                 raise RuntimeError("No time layout key found in time layout")
-            key = key[0].strip()                            # clean up key
-            timeitemlist = self._parsetimeitems(key, timelayouttree.findAll('start-valid-time'))    
+            key = key.strip()                               # clean up key
+            timeitemlist = self._parsetimeitems(key, timelayouttree.iter('start-valid-time'))    
             if timeitemlist :                               # if got list
                 timelayouts[key] = timeitemlist             # item for this key
                 if self.verbose :
@@ -230,18 +269,17 @@ class nwsxml(object) :
         The time layout is a separate item which associates timestamps with
         the forecast.
         """
-        wordedforecasts = tree.findAll("wordedForecast")    # find forecasts
-        if wordedforecasts is None or len(wordedforecasts) == 0 :
+        wordedforecasts = tree.iter("wordedForecast")       # find forecasts
+        if wordedforecasts is None :
             raise RuntimeError("Forecast text not found in data")
         for wordedforecast in wordedforecasts :             # for each forecast
-            timelayoutkey = wordedforecast["time-layout"]   # get time layout name
+            timelayoutkey = wordedforecast.attrib.get("time-layout", None)   # get time layout name
             if timelayoutkey is None :
                 raise RuntimeError("Forecast time layout key not found in data")
-            forecasttextitems = wordedforecast.findAll("text")  # get text items
+            forecasttextitems = wordedforecast.iter("text") # get text items
             forecasttexts = []                              # text items
             for forecasttextitem in forecasttextitems :     # for all text items
-                textparts = forecasttextitem.findAll(text=True) # get all text items
-                s = (" ".join(textparts)).strip()           # get all text as one string
+                s = forecasttextitem.text.strip()           # get text item                   
                 forecasttexts.append(s)                     # save forecast text
             #   Now find matching time layout item for forecast
             timelayoutkey = timelayoutkey.strip()
@@ -265,7 +303,7 @@ class nwsxml(object) :
         
     def parse(self, tree) :
         """
-        Take in BeautifulSoup XML parse tree of XML forecast and update object.
+        Take in XML parse tree of XML forecast and update object.
         """
         try :
             #   Get forecast 
@@ -273,7 +311,7 @@ class nwsxml(object) :
             timelayouts = self._parsetimelayouts(tree)      # get time layouts needed to timestamp forecasts
             self._parseforecasts(tree, timelayouts)         # parse forecasts
                 
-        except (EnvironmentError, RuntimeError) as message :
+        except (EnvironmentError, RuntimeError, xml.etree.ElementTree.ParseError) as message :
             self.err = "Unable to interpret weather data: %s." % (message,)
             return
             
@@ -307,9 +345,9 @@ def getnwsforecast(lat, lon, verbose=False) :
         opener = urllib.request.urlopen(url)    # URL opener object 
         xmltext = opener.read()                 # read entire contents
         opener.close()                          # close
-        tree = bs4.BeautifulSoup(xmltext,"xml")
+        tree = xml.etree.ElementTree.fromstring(xmltext) # parse
         if verbose :
-            print(tree.prettify())              # print tree for debug
+            print(prettify(tree))               # print tree for debug
         forecast = nwsxml(verbose)              # get new forecast
         forecast.parse(tree)                    # parse forecast
         return(forecast.asString(72))           # return result 
@@ -340,9 +378,9 @@ def getziplatlong(zip, verbose=False) :
         opener = urllib.request.urlopen(url)    # URL opener object 
         xmltext = opener.read()                 # read entire contents
         opener.close()                          # close
-        tree = bs4.BeautifulSoup(xmltext,"xml")
+        tree = xml.etree.ElementTree.fromstring(xmltext)
         if verbose :
-            print(tree.prettify())              # print tree for debug
+            print(prettify(tree))               # print tree for debug
         latlon = gettextitem(tree, "latLonList")# look for lat lon item
         #   Format of latLon is number, number
         matches = NWSZIPRE.match(latlon)        # looking for 123.45,-345.23
@@ -351,8 +389,8 @@ def getziplatlong(zip, verbose=False) :
         lat = matches.group(1)
         lon = matches.group(2)
         return((None, lat, lon))                # returns (msg, lat, lon)
-    except (RuntimeError, EnvironmentError) as message :                 # if trouble
-        s = "Unable to get location of ZiP %s: %s" % (zip, str(message))
+    except (RuntimeError, EnvironmentError, xml.etree.ElementTree.ParseError) as message :                 # if trouble
+        s = "Unable to get location of ZIP %s: %s" % (zip, str(message))
         return((s, None, None))
 
 #        
@@ -376,10 +414,10 @@ def getplacelatlong(city, state, verbose=False) :
         opener = urllib.request.urlopen(url)    # URL opener object 
         xmltext = opener.read()                 # read entire contents
         opener.close()                          # close
-        tree = bs4.BeautifulSoup(xmltext,"xml")
+        tree = xml.etree.ElementTree.fromstring(xmltext)
         if verbose :
-            print(tree.prettify())              # print tree for debug
-        features = tree.findAll("USGS")         # find all USGS features
+            print(prettify(tree))               # print tree for debug
+        features = tree.iter("USGS")            # find all USGS features
         bestfeaturename = None                  # pick best match name
         lat = None
         lng = None
@@ -394,8 +432,9 @@ def getplacelatlong(city, state, verbose=False) :
             raise RuntimeError("City not found")
         return((None, bestfeaturename, lat, lng))
 
-    except (RuntimeError, EnvironmentError) as message :                 # if trouble
+    except (RuntimeError, EnvironmentError, xml.etree.ElementTree.ParseError) as message :                 # if trouble
         s = "Unable to get location of %s, %s: %s" % (city, state, str(message))
+        traceback.print_exc()   # ***TEMP***
         return((s, None, None, None))
 #
 #   getweatherreport  -- main interface
