@@ -157,6 +157,22 @@ class nwsxml(object) :
         self.longitude = None                   # longitude (string)
         self.perioditems = []                   # forecast items for time periods
         
+    def _find(self, tree, keys) :
+        """
+        Find item at tuple of keys given.
+        Raises RuntimeError if fail
+        """
+        assert(isinstance(keys, tuple))
+        assert(len(keys) > 0)
+        key = keys[0]
+        item = tree.find(key)                               # look for indicated tag
+        if item is None :
+            raise RuntimeError('NWS weather report XML format unexpected. Did not find "%s" inside XML tag "%s"' % (key, tree.tag))
+        if len(keys) < 2 :                                  # if more keys
+            return(item)                                    # done
+        return(self._find(item, keys[1:]))                  # tail recurse for next tag          
+            
+                
     def _parseheader(self, tree) :
         """
         Parse forecast header info - location, time, etc.
@@ -165,7 +181,7 @@ class nwsxml(object) :
         if tree.tag == "dwml" :
             dwmlitem = tree
         else :
-            dwmlitem = tree.find("dwml")                        # should be Digital Weather Markup Language
+            dwmlitem = self._find(tree,("dwml",))           # should be Digital Weather Markup Language
         if not dwmlitem :                                   # This isn't a valid weather report
             msg = "Weather forecast not found"              # note problem
             titleitem = tree.find("title")                  # probably HTML
@@ -175,36 +191,23 @@ class nwsxml(object) :
                     msg = titletext
             raise RuntimeError(msg)                         # fails
         #   Process header. Looking for <dwml><head><product>
-        headitem = dwmlitem.find("head")
-        if headitem is None :
-            raise RuntimeError("No forecast head item found")
-        productitem = headitem.find("product")              # find product item
-        if productitem is None :
-            raise RuntimeError("No forecast product item found")
+        productitem = self._find(dwmlitem, ("head","product"))
         #   Get creation date/time
-        creationitem = productitem.find("creation-date")           # timestamp item 
-        if creationitem is None :
-            raise RuntimeError("No forecast creation date found")
+        creationitem = self._find(productitem,("creation-date",))  # timestamp item 
         creationtime = creationitem.text                    # get period text, which is a timestamp
         if creationtime is None :
             raise RuntimeError("No forecast creation date/time")
         self.creationtime = parseisotime(creationtime.strip()) # convert to timestamp
         #   Process data.  Looking for <dwml><data type=forecast>
         #   Get location name
-        dataitem = dwmlitem.find("data")                    # find forecast item
-        if dataitem is None :
-            raise RunTimeError("No data item")
+        dataitem = self._find(dwmlitem, ("data",))
         if dataitem.attrib.get("type") != "forecast" :
             raise RuntimeError("No forecast data item")
-        locitem = dataitem.find("location")
-        if locitem is None :
-            raise RuntimeError("No location item")
-        pointitem = locitem.find("point")                   # point item within forecast
-        if pointitem is None :
-            raise RuntimeError("No location point data item")
+        locitem = self._find(dataitem,("location",))        # expecting <location><point>
+        pointitem = self._find(locitem,("point",))          # find point item
         self.latitude = pointitem.attrib.get("latitude")    # get fields of interest
         self.longitude = pointitem.attrib.get("longitude")
-        cityitem = locitem.find("city")                     # city item within point
+        cityitem = locitem.find("city")                     # must have <city> or <area-description>
         if cityitem is not None :
             state = cityitem.attrib.get('state')
             city = cityitem.text                            # get city name
@@ -213,13 +216,10 @@ class nwsxml(object) :
             state = placenames.CODE_STATE.get(state, state) # spell out state name if possible
             self.location = city + ", " + state
         else :                                              # no city, use NWS area description
-            areaitem = locitem.find("area-description")     # go for area description
-            if areaitem is None :
-                raise RuntimeError("No city or area item") 
+            areaitem = self._find(locitem,("area-description",))     # go for area description
             area = areaitem.text                            # "6 Miles ESE Hidden Valley Lake CA"
             if area is None :
                 raise RuntimeError("No area description")
-            print("Area: " + unicode(area))                 # ***TEMP***
             self.location = area                            # use NWS area description
       
     def _parsetimeitems(self, key, timeitems) :
@@ -249,9 +249,7 @@ class nwsxml(object) :
         timelayouts = {}                                    # key, parse tree
         timelayouttrees = tree.iter("time-layout")          # find all time layouts
         for timelayouttree in timelayouttrees :             # for all trees
-            keytag = timelayouttree.find("layout-key")      # find layout key
-            if keytag is None :
-                raise RuntimeError("No 'time-layout' tag found in time layout")
+            keytag = self._find(timelayouttree,("layout-key",))
             key = keytag.text                               # get text
             if key is None :                                # must be a single text item
                 raise RuntimeError("No time layout key found in time layout")
