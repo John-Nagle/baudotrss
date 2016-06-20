@@ -40,9 +40,14 @@ Version 2.9:
 
 Version 2.10:
 - Code modernization
-  - Support for Python 2.7 dropped.
+  - Support for Python 2.6 dropped.
   - Uses "bs4" library package rather than its own copy of BeautifulSoup.
   - Compatible with current version of "pyserial".
+  
+Version 3.0:
+- Support for Python 2.7 and Python 3.
+- Tested on both Windows 7 and Xubuntu.
+- Removed dependency on lxml parser to ease installation.
   
 
 This is a Python program for driving classic Baudot teletype machines such as
