@@ -16,6 +16,8 @@
 DEFAULTCONFIG = "configdefault.cfg"             # default config values.
 READTIMEOUT = 1.0              # read timeout - makes read abort (control-C) work on Linux.
 
+import os
+import inspect
 import sys
 assert(sys.version_info >= (2,7))               # Requires Python 2.7 or later.
 import traceback
@@ -30,8 +32,24 @@ import baudottty
 #
 #    Suppress deprecation warnings.  We know feedparser and BeautifulSoup need updates.
 #
-warnings.filterwarnings(action='ignore', category=DeprecationWarning, module='BeautifulSoup')
-warnings.filterwarnings(action='ignore', category=DeprecationWarning, module='feedparser')
+####warnings.filterwarnings(action='ignore', category=DeprecationWarning, module='BeautifulSoup')
+####warnings.filterwarnings(action='ignore', category=DeprecationWarning, module='feedparser')
+#
+#   get_script_dir 
+#
+def get_script_dir(follow_symlinks=True):
+    """
+    Get directory from which script or program is executing
+    """
+    if getattr(sys, 'frozen', False): # py2exe, PyInstaller, cx_Freeze
+        path = os.path.abspath(sys.executable)
+    else:
+        path = inspect.getabsfile(get_script_dir)
+    if follow_symlinks:
+        path = os.path.realpath(path)
+    return os.path.dirname(path)
+
+####print(get_script_dir())
 
 #
 #   opentty  --  create and open the TTY device
@@ -80,7 +98,7 @@ def main() :
     try:         
         #   Process config files if present.
         #   There is a default config file, which can be overridden.
-        configfiles = [DEFAULTCONFIG]                       # default
+        configfiles = [get_script_dir() + "/" + DEFAULTCONFIG] # default config lives with program
         feedurls = []
         for arg in args :                                   # file args
             if arg.lower().endswith(".cfg") :               # if config
@@ -91,14 +109,17 @@ def main() :
                 raise(ValueError(
                 'Command line "%s" should be a feed URL or a config file.' 
                 % (arg,)))
-        config = configparser.ConfigParser()            # read config file
         logger.info('Configuration from "%s"' % 
-            ('", "'.join(configfiles)))                 # source of config
-        config.read(configfiles)                        # fetch configs
+            ('", "'.join(configfiles)))                     # source of config
+        for fname in configfiles :                          # make sure config files are readable
+            if not os.access(fname, os.R_OK) :              # configparser does not do this
+                raise(ValueError('Unable to read config file "%s".' % (fname,)))
+        config = configparser.ConfigParser()                # read config file
+        config.read(configfiles)                            # fetch configs
         #   Get params
-        if options.verbose :                            # dump config
+        if options.verbose :                                # dump config
             logger.debug("Configuration: ")
-            for section in config.sections() :          # dump section
+            for section in config.sections() :              # dump section
                 logger.debug(" [%s]" % (section,))
                 for (k,v) in config.items(section) :
                     logger.debug('   %s: "%s"' % (k,v))
