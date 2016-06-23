@@ -87,7 +87,7 @@ def doservercmd(logger, accountsid, ourphoneno, cmd, v1=None, v2=None) :
     fd.close()                                          # done with open
     return(result)                                      # return result
 #
-#    class SMSfeed  --  read SMS messages from a Google Voice account.
+#    class SMSfeed  --  read SMS messages from our server, which has an API.
 #
 class Twiliofeed(feedmanager.Feed) :    
 

@@ -29,7 +29,6 @@ import traceback
 #
 #    Globals
 #
-DEFAULTCONFIG = "configdefault.cfg"
 
 LONGPROMPT =    "\nType N for news, W for weather, S to send, O for off, CR to wait: "
 SHORTPROMPT =    "\nN, W, S, O, or CR: "
