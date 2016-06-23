@@ -33,7 +33,6 @@ import placenames
 #
 #   Constants
 #   
-SERVERPOLLURL = "http://www.aetherltd.com/cgi/ttypoll.cgi?" # URL for polling
 TWILIOBASE = "https://api.twilio.com/2010-04-01/"            # Twilio base URL
 
 def expandplaceabbrev(fields, fieldname, placetable) :
@@ -70,7 +69,7 @@ def maketimelocal(dt) :
     return(dt + delta)                              # apply time delta
 
 
-def doservercmd(logger, accountsid, ourphoneno, cmd, v1=None, v2=None) :
+def doservercmd(logger, serverpollurl, accountsid, ourphoneno, cmd, v1=None, v2=None) :
     """
     Send command to server at Aetheric (not Twilio), get XML reply
     """
@@ -79,7 +78,7 @@ def doservercmd(logger, accountsid, ourphoneno, cmd, v1=None, v2=None) :
         fields["v1"] = v1
     if v2:
         fields["v2"] = v2
-    url = SERVERPOLLURL + urllib.parse.urlencode(fields) # construct cmd URL
+    url = serverpollurl + urllib.parse.urlencode(fields) # construct cmd URL
     logger.debug("SMS server cmd: " + url)
     fd = urllib.request.urlopen(url)                    # open url
     result = fd.read()                                  # read contents
@@ -104,14 +103,17 @@ class Twiliofeed(feedmanager.Feed) :
     #
     #    Called from outside the thread
     #
-    def __init__(self, accountsid, authtoken, ourphoneno, logger) :
+    def __init__(self, serverpollurl, accountsid, authtoken, ourphoneno, hdrtitle, logger) :
         feedmanager.Feed.__init__(self, "SMS", logger)
         self.lock = threading.Lock()                    # lock object.  One login at a time.
+        self.serverpollurl = serverpollurl              # our site to poll for incoming SMS
         self.accountsid = accountsid                    # accounts ID - for all requests
         self.authtoken = authtoken                      # auth token
         self.ourphoneno = ourphoneno                    # our phone number
+        if hdrtitle is None :                           # if no header title
+            hdrtitle = "SMS message"                    # default title for feed
+        self.hdrtitle = hdrtitle                        # title of this SMS source
         self.errmsg = None                              # no pending error message
-        self.hdrtitle = "Aetheric Message"
         self.url = self.hdrtitle
         self.msgfrom = None                             # phone number of last message returned to user
         self.logger = logger                            # debug og to here
@@ -246,7 +248,7 @@ class Twiliofeed(feedmanager.Feed) :
             while True :                                # until all available read
                 self.logger.debug("Polling SMS server starting after serial #%s" 
                     % (self.lastserial,))
-                replyxml = doservercmd(self.logger, self.accountsid, self.ourphoneno, "getnext", self.lastserial + 1, None) # get next msg
+                replyxml = doservercmd(self.logger, self.serverpollurl, self.accountsid, self.ourphoneno, "getnext", self.lastserial + 1, None) # get next msg
                 newserial = self.handlereply(replyxml)  # handle message
                 self.logger.debug("Poll complete.")
                 if newserial and newserial > self.lastserial: # if got message
@@ -374,7 +376,7 @@ class Twiliofeed(feedmanager.Feed) :
             while True:                                 # until Queue.empty or network error
                 item = self.donequeue.get_nowait()      # get input if any
                 serial = item.serial                    # serial number of done item
-                reply = doservercmd(self.logger, self.accountsid, self.ourphoneno,
+                reply = doservercmd(self.logger, self.serverpollurl, self.accountsid, self.ourphoneno,
                     "printed", serial, serial)   
         except queue.Empty:                             # if empty
             return(True)                                # success
@@ -385,7 +387,7 @@ class Twiliofeed(feedmanager.Feed) :
             return(False)
 
 #
-#   Unit test
+#   Unit test ***NEEDS WORK*** Obsolete
 #
 def test(accountsid) :
     import logging
@@ -394,7 +396,7 @@ def test(accountsid) :
     logger = logging.getLogger('Messager')              # main logger				
     logger.setLevel(logging.DEBUG)						# very verbose
 
-    feed = Twiliofeed(accountsid, logger)
+    feed = Twiliofeed(accountsid, logger)               # ***NEEDS WORK***
     feed.start()
     for i in xrange(300) :
         msg = feed.getitem()

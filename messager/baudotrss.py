@@ -30,11 +30,6 @@ import baudottty
 
 
 #
-#    Suppress deprecation warnings.  We know feedparser and BeautifulSoup need updates.
-#
-####warnings.filterwarnings(action='ignore', category=DeprecationWarning, module='BeautifulSoup')
-####warnings.filterwarnings(action='ignore', category=DeprecationWarning, module='feedparser')
-#
 #   get_script_dir 
 #
 def get_script_dir(follow_symlinks=True):
@@ -49,7 +44,6 @@ def get_script_dir(follow_symlinks=True):
         path = os.path.realpath(path)
     return os.path.dirname(path)
 
-####print(get_script_dir())
 
 #
 #   opentty  --  create and open the TTY device

@@ -273,9 +273,11 @@ class simpleui(object) :
         #    SMS feed initialization
         if config.has_section("twilio") :                 # if Twilio mode        
             self.smsmsgfeed = twiliofeed.Twiliofeed(
+                config.get("twilio", "serverpollurl"),
                 config.get("twilio", "accountsid"),
                 config.get("twilio", "authtoken"),
                 config.get("twilio", "phone"),
+                config.get("twilio", "title"),
                 self.logger)
         if config.has_section("format") :                   # format config
             self.cutmarks = config.getboolean("format","cutmarks")
@@ -530,10 +532,9 @@ class simpleui(object) :
             self.abortthreads()                             # abort all threads
             raise
         except (KeyboardInterrupt) as message :             # if shutdown
-            self.logger.error("Shutting down: " + str(message))
-            self.abortthreads()                             # abort all threads
-            raise
-        except (RuntimeError) as message :                 # if trouble
+            self.logger.error("Control-C - Shutting down and exiting.")
+            sys.exit()                                      # exit normally
+        except (RuntimeError) as message :                  # if trouble
             self.logger.exception("Unrecoverable error, aborting: " + str(message))
             self.abortthreads()                             # abort all threads
             raise                                           # re-raise exception with other thread exited.

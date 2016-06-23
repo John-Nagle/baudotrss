@@ -41,8 +41,8 @@ System requirements:
 	Computer:		Intel 32-bit, with hardware serial port.  (USB to serial
                     converters will usually not work at 45.45 baud.)
 	Operating system	Windows 7/Linux. 						
-	Python system:		2.6 or 2.7 (No 3.x yet.)
-	Required packages:	win32api
+	Python system:		2.7 or 3.x
+	Required packages:	bs4
 						pyserial
 						feedparser
 	Baudot teletype:	Model 15, 19 or 28 in proper working condition.
@@ -57,7 +57,15 @@ System requirements:
 						the appropriate times.   
 						
 						For information on interfacing a current-loop Teletype to a PC,
-						see http://www.aetherltd.com"			
+						see http://www.aetherltd.com".
+						
+    For sending SMS messages:
+                        An account with Twilio.
+                        
+    For receiving SMS messages:
+                        A server which supports our message API. 
+    	
+								
 
 System configuration issues:
 
