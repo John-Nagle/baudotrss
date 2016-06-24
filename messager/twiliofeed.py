@@ -78,7 +78,7 @@ def doservercmd(logger, serverpollurl, accountsid, ourphoneno, cmd, v1=None, v2=
         fields["v1"] = v1
     if v2:
         fields["v2"] = v2
-    url = serverpollurl + urllib.parse.urlencode(fields) # construct cmd URL
+    url = serverpollurl + "?" + urllib.parse.urlencode(fields) # construct cmd URL
     logger.debug("SMS server cmd: " + url)
     fd = urllib.request.urlopen(url)                    # open url
     result = fd.read()                                  # read contents
