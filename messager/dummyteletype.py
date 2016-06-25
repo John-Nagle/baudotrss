@@ -11,6 +11,7 @@
 import logging
 from six.moves import input
 import baudot
+import threading
 #
 #   Constants
 #
@@ -37,11 +38,15 @@ class Dummyteletype(object) :                       # really should inherit from
         self.inshift = None                         # input side shift state
         self.outshift = None                        # output side shift state
         self.outline = ''                           # line to output
+        self.flushtimer = None                      # no timer yet
+        self.flushlock = threading.Lock()           # flushing lock
         
+       
     def flushOutput(self) :                         # flush queued output
-        if len(self.outline) > 0 :                  # if anything queued
-            self.logger.info(self.outline)          # log it
-            self.outline = ''                       # clear line
+        with self.flushlock :                       # critical section
+            if len(self.outline) > 0 :              # if anything queued
+                self.logger.info(self.outline)      # log it
+                self.outline = ''                   # clear line
         
     def write(self, s) :                                  
         """
@@ -60,8 +65,16 @@ class Dummyteletype(object) :                       # really should inherit from
                 if ch in ['\n','\r'] :
                     self.flushOutput()              # display if anything available
                 else :
-                    self.outline = self.outline + ch # add to output line
+                    with self.flushlock:            # critical section
+                        self.outline = self.outline + ch # add to output line
         self.inshift = self.outshift                # keep both sides in sync
+        #   If no output has been sent for 0.5 secs, flush the output buffer.
+        #   This gets us full lines of output.
+        if self.flushtimer is not None :
+            self.flushtimer.cancel()                # cancel old timer
+        self.flushtimer = threading.Timer(0.5, self.flushOutput) # inefficient, but debug only
+        self.flushtimer.daemon = True               # make it a daemon
+        self.flushtimer.start()                     # start timer again
             
         
     def read(self) :
