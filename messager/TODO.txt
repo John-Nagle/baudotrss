@@ -1,0 +1,5 @@
+TODO
+
+1.  Fix and convert weather function.           [DONE]
+2.  Fix dummy teletype to work on Python 2.7    [DONE]
+3.  Fix BREAK to work reliably in Python 3.     [DONE]
