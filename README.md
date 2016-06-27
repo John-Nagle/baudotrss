@@ -40,9 +40,9 @@ System requirements:
 
 	Computer:		Intel 32-bit, with hardware serial port.  (USB to serial
                     converters will usually not work at 45.45 baud.)
-	Operating system	Windows 7/Linux. 						
+	Operating system	Windows 7 / Linux.
 	Python system:		2.7 or 3.x
-	Required packages:	bs4
+	Required packages:	beautifulsoup4
 						pyserial
 						feedparser
 	Baudot teletype:	Model 15, 19 or 28 in proper working condition.
@@ -78,17 +78,30 @@ USB to serial devices require special handling, as most will not run at 45.45 ba
 Some will.  See "http://www.aetherltd.com/connectingusb.html".  Some USB to
 serial devices must be configured to run at a false baud rate.  For the device
 we use, the baud rate in the configuration file is set to 600 baud (an othewise
-unused value) and the device runs at 45.45 baud.  
- 
-The file "configdefault.cfg" is a default configuration file, and documents the
-available parameters.  If a second configuration file with a name ending in .cfg
-is specified on the command line, items there override the defaults.
+unused value) and the device runs at 45.45 baud.
+
+A configuration file must be created, with at least the "port" and "baud" parameters
+in the [teletype] section.  Use "configsample.cfg" as a prototype and edit it.
+
+If you use a port name of "TEST", the program will print to the computer console
+window and accept input from it.  This allows test operation without a real Teletype.
 
 Installation:
 	
-Usual setup.py rules apply.
+    Unpack distribution into an empty directory.
 
 Running the program:
+
+    ./runbaudotrss.sh [options] [configfiles] [feedurls]
+    
+or
+
+    python3 baudotrss.py [options] [configfiles] [feedurls]
+
+(Python 2.7 will work, if necessary.)
+    
+The "runbaudotrss.sh" script is a convenience for running 
+the program from a startup icon.
 
     Usage: baudotrss.py [options] [configfiles] [feedurls]
 
@@ -127,7 +140,7 @@ Most Model 15 and 28 machines are USTTY.  Western Union machines
 may be ITA2. 
 
    #   Keyboard - true if keyboard present on TTY.  False for RO machines.
-   keyboard: True    
+   keyboard: True
  
 If a keyboard is configured, the Teletype (not the computer) will prompt:
 
@@ -144,7 +157,7 @@ in the configuration file.
 
 There is also support for a Twilio SMS gateway, but this requires 
 a Twilio account, a web hosting account, and some server side software
-not included here.  
+not included here.
 
 "Weather" is currently the weather for San Jose, CA
 This can be changed in the configuration file.  Most named
@@ -155,7 +168,7 @@ overrides any named city and state.
 
 "Off" shuts down any Teletype activity, until a BREAK is sent
 to wake things up.  The program can sit indefinitely in OFF state
-waiting for a BREAK.  
+waiting for a BREAK.
 
 When the Teletype is prompting for a command, after 30 seconds, it
 will print "WAITING" and turn off the motor.  Sending a BREAK will wake
@@ -164,13 +177,14 @@ stop whatever is happening and prompt for a command.
 
 Without a keyboard, the program will print the latest news, then
 wait for further news updates.  If a BREAK is sent when no keyboard is 
-configured, the printing of news starts again from the beginning.  
+configured, the printing of news starts again from the beginning.
 This is a good demo mode for receive only machines. 
 
 If the program has a problem connecting to the Internet, the
 problem will be reported on the Teletype, with three bells at
 the beginning of the message.  The error message will be repeated
-every two minutes until the problem is resolved.   
+every two minutes until the problem is resolved. 
 
 There is no interactive interface or GUI on the computer.  This program
-is normally run in the background.  It will run forever until killed.
+is normally run in the background.  It will run forever until killed
+with control-C.
