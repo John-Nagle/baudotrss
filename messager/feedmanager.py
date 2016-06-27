@@ -288,6 +288,12 @@ class Feeds(object) :
         self.logger = logger                            # logging object
         self.feeds = []                                 # no feeds yet
         self.lasttitle = None                           # no last title
+        
+    def feedcount(self) :
+        """
+        Number of feeds
+        """
+        return(len(self.feeds))
 
     def addfeed(self, feed) :                           # add a feed
         self.feeds.append(feed)                         # add a feed

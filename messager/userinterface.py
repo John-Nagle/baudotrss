@@ -20,6 +20,7 @@ import baudottty
 import nwsweatherreport                     # weather report
 import newsfeed
 import twiliofeed
+import twiliosend
 import feedmanager
 import time
 import re
@@ -84,7 +85,7 @@ re1 = re.compile(r'\D')                                     # recognize non-digi
 def sendviasms(ui) :
     ui.logger.debug("Beginning SMS message entry.")
     tty = ui.tty
-    if ui.smsmsgfeed is None :
+    if ui.smssender is None :
         tty.doprint("\a" + "NO MESSAGING ACCOUNT, CANNOT SEND." + '\n')        # print reply
         return                                              # can't do that
     numchars = ['0','1','2','3','4','5','6','7','8','9','0','.','-']    # acceptable in phone number
@@ -121,7 +122,7 @@ def sendviasms(ui) :
         return
     sendtext = formatforsms(sendtext)                       # apply upper/lower case SMS conventions
     ui.logger.info("Sending to %s: %s" % (sendto, sendtext))    # logging
-    reply = ui.smsmsgfeed.sendSMS(sendto,    sendtext)
+    reply = ui.smssender.sendSMS(sendto, sendtext)          # send
     if reply is None :                                      # if no error
         reply = "DONE"                                      # although sender says OK even when number not validated
     tty.doprint("\n" + reply + '\n')                        # print reply    
@@ -259,6 +260,7 @@ class simpleui(object) :
         self.cutmarks = config.getboolean("format", "cutmarks")
         self.format = None
         self.smsmsgfeed = None                              # no SMS feed yet
+        self.smssender = None                               # no SMS sender yet
         #   Object variables
         self.cutmarks = False                               # insert paper cutmarks if true
         self.needcut = False                                # need a cutmark
@@ -271,14 +273,21 @@ class simpleui(object) :
         #   Set global socket timeout so feed readers don't hang.
         socket.setdefaulttimeout(DEFAULTSOCKETTIMEOUT)      # prevent hangs
         #    SMS feed initialization
-        if config.has_section("twilio") :                 # if Twilio mode        
-            self.smsmsgfeed = twiliofeed.Twiliofeed(
-                config.get("twilio", "serverpollurl"),
-                config.get("twilio", "accountsid"),
-                config.get("twilio", "authtoken"),
-                config.get("twilio", "phone"),
-                config.get("twilio", "title"),
-                self.logger)
+        if config.has_section("twilio") :                   # if Twilio mode
+            if config.has_option("twilio","serverpollurl") : # if has polling info      
+                self.smsmsgfeed = twiliofeed.Twiliofeed(
+                    config.get("twilio", "serverpollurl"),
+                    config.get("twilio", "accountsid"),
+                    config.get("twilio", "authtoken"),
+                    config.get("twilio", "phone"),
+                    config.get("twilio", "title"),
+                    self.logger)
+            self.smssender = twiliosend.Twiliosend(         # set up SMS send even if we can't poll
+                    config.get("twilio", "accountsid"),
+                    config.get("twilio", "authtoken"),
+                    config.get("twilio", "phone"),
+                    self.logger)
+            
         if config.has_section("format") :                   # format config
             self.cutmarks = config.getboolean("format","cutmarks")
             if self.smsmsgfeed :                            # if have SMS feed
@@ -382,6 +391,8 @@ class simpleui(object) :
             #    No traffic, wait for more to come in
             if not waiting :
                 self.sendeject()                            # eject page if needed
+                if self.feeds.feedcount() == 0 :            # warn 
+                    tty.doprint("NO FEEDS CONFIGURED. NO POSSIBLE INCOMING TRAFFIC.\n")
                 tty.doprint("WAITING...")                   # indicate wait
                 waiting = True                              # waiting with motor off
                 feed.setlasttitleprinted(None)              # forget last title printed; print new title on wakeup
