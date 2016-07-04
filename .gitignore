@@ -2,3 +2,5 @@
 *.pyc
 *~
 aetheric
+dist
+build
