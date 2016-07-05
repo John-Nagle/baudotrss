@@ -9,6 +9,7 @@ setup(name='Baudotrss',
       author_email='nagle@aetherltd.com',
       url='https://www.aetherltd.com',
       package_dir = {'baudotrss': 'messager'},
+      package_data={'baudotrss': ['messager/configdefault.cfg']},
       packages=['baudotrss'],
      )
 

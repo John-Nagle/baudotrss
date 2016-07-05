@@ -157,5 +157,6 @@ def main() :
         print("\n\n-----PROGRAM TERMINATED-----\n%s\n" % (str(message),))
         return(1)
 
-main()                                                      # start program
+if __name__ == "__main__":                                  # if started as main
+    main()                                                  # start program
 
