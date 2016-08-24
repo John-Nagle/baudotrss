@@ -17,8 +17,12 @@ import os
 #
 #   Constants
 #
+#   ASCII
 ESC = 0x1b                                          # ESC char, ASCII/UNICODE
-CTLC = 0x03                                         # control-C    
+CTLC = 0x03                                         # control-C
+
+#   Baudot
+BLANKKEY = 0x00                                     # the all ones char in Baudot     
 
 class Getch:
     """
@@ -141,13 +145,20 @@ class Dummyteletype(object) :                       # really should inherit from
         baudotread = bytearray()                    # assemble bytes
         intexta = intext.encode("ASCII","replace")  # convert to bytes
         for inbyte in intexta :                     # for all input chars
+            if isinstance(inbyte, int) :            # Python 2/3 problem
+                inbyte = chr(inbyte)                # make it char
             ####self.logger.info("Keyboard char: %s" % (repr(inbyte),)) # ***TEMP***
-            if inbyte == CTLC  or inbyte == chr(CTLC) :
+            if inbyte == chr(CTLC) :
                 self.logger.info("Control-C abort")
                 os._exit(0)                         # this is the normal exit
-            if inbyte == ESC or inbyte == chr(ESC): # Python 2/3 silliness
+            if inbyte == "\n" :
+                inbyte = '\r'                       # newline is a CR in Teletype land
+            #   Special cases
+            if inbyte == chr(ESC): # Python 2/3 silliness
                 self.logger.info("Keyboard simulated BREAK")
                 (bb, shift) = (0,None)              # If ESC char, simulate BREAK
+            elif inbyte == '\b' or inbyte == chr(0x7f) : # Backspace, which is 0x7f on Linux
+                (bb, shift) = (BLANKKEY, None)      # if backspace, simulate blank key
             else :
                 (bb, shift) = self.baudot.chToBaudot(inbyte)  # convert ASCII char to Baudot
             if (not (shift is None)) and shift != self.inshift : # if shifting implied
