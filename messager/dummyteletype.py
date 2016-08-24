@@ -2,6 +2,7 @@
 #   dummyteletype --  fake Baudot Teletype emulator
 #
 #   Talks to computer console window.  For debug usage.
+#   Only activated when configured port is "TEST"
 #
 #   License: LGPL.
 #
@@ -9,14 +10,62 @@
 #   June, 2015
 #
 import logging
-from six.moves import input
 import baudot
 import threading
+import sys
+import os
 #
 #   Constants
 #
 ESC = 0x1b                                          # ESC char, ASCII/UNICODE
-        
+CTLC = 0x03                                         # control-C    
+
+class Getch:
+    """
+    Gets a single character from standard input.  
+    Does not echo to the screen.
+    Does not affect output console processing.
+    """
+    def __init__(self):
+        try:
+            self.impl = _GetchWindows()
+        except ImportError:
+            self.impl = _GetchUnix()
+
+    def __call__(self): return self.impl()
+
+
+class _GetchUnix:
+    def __init__(self):
+        import tty, sys
+
+    def __call__(self):
+        import sys, tty, termios
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            settings = old_settings                     # save old settings
+            settings[3] = settings[3] & ~termios.ICANON # turn off "canonical processing" of input
+            termios.tcsetattr(fd, termios.TCSADRAIN, settings)
+            ch = sys.stdin.read(1)                      # read one char
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
+
+
+class _GetchWindows:
+    def __init__(self):
+        import msvcrt
+
+    def __call__(self):
+        import msvcrt
+        ch = msvcrt.getch()
+        ch0 = ch[0]
+        if isinstance(ch0, int) :                   # if Python 3.x
+            return(chr(ch0))
+        return(ch0)                                 # Python 2.x
+       
 #
 #   Dummyteletype  -- dummy serial object
 #
@@ -40,7 +89,7 @@ class Dummyteletype(object) :                       # really should inherit from
         self.outline = ''                           # line to output
         self.flushtimer = None                      # no timer yet
         self.flushlock = threading.Lock()           # flushing lock
-        
+        self.getch = Getch()                        # portable get character        
        
     def flushOutput(self) :                         # flush queued output
         with self.flushlock :                       # critical section
@@ -87,12 +136,15 @@ class Dummyteletype(object) :                       # really should inherit from
         
         Anything other than a single char has a CR appended.     
         """
-        intext = input()                            # Baudot input as string without trailing null
+        intext = self.getch()                       # Console ASCII input from simulated keyboard
         self.flushOutput()                          # flush any pending output
         baudotread = bytearray()                    # assemble bytes
         intexta = intext.encode("ASCII","replace")  # convert to bytes
         for inbyte in intexta :                     # for all input chars
             ####self.logger.info("Keyboard char: %s" % (repr(inbyte),)) # ***TEMP***
+            if inbyte == CTLC  or inbyte == chr(CTLC) :
+                self.logger.info("Control-C abort")
+                os._exit(0)                         # this is the normal exit
             if inbyte == ESC or inbyte == chr(ESC): # Python 2/3 silliness
                 self.logger.info("Keyboard simulated BREAK")
                 (bb, shift) = (0,None)              # If ESC char, simulate BREAK
