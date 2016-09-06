@@ -27,6 +27,7 @@ import optparse
 import userinterface
 import configparser
 import baudottty
+import encodings.idna                           # force this in for Pyinstaller.
 
 
 #

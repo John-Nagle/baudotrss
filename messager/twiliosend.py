@@ -55,6 +55,14 @@ class Twiliosend(object) :
             self.logger.error("Twilio XML reply not parsable: " + str(message))
             status = getattr(message,"code", 599)       # get expat parser fail code
             return(status, None)
+            
+    def fetcherror(self, msgtxt, message) :             # report fetch error
+        if message and len(str(message)) > 0:           # if useful exception info
+            msgtxt += '. (' + str(message) + ')'        # add it
+        msgtxt += '.'
+        self.logger.warning(msgtxt)                     # log
+        return(msgtxt)
+         
         
     def sendSMS(self, number, text) :                   # sending capability
         """

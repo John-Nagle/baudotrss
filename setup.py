@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from distutils.core import setup
+import py2exe
 
 setup(name='Baudotrss',
       version='3.0',
@@ -11,5 +12,6 @@ setup(name='Baudotrss',
       package_dir = {'baudotrss': 'messager'},
       package_data={'baudotrss': ['messager/configdefault.cfg']},
       packages=['baudotrss'],
+      console=['messager/baudotrss.py'],
      )
 
