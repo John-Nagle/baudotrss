@@ -89,7 +89,7 @@ def parseisotime(s) :
             offset == 0
         else :
             fields = re.match(r'([+-])(\d\d):(\d\d)', offsetpart)
-            if not fields :
+            if fields is None :
                 raise RuntimeError("Unable to parse time string: %s" % (s,))
             sign = fields.group(1)          # + or -
             hours = int(fields.group(2))    # has to be valid number, passed RE
@@ -135,7 +135,7 @@ class nwsperiod(object) :
         # convert to local time from UTC timestamp
         localforecasttime = datetime.datetime.fromtimestamp(calendar.timegm(timestamp.timetuple()))
         s = msgutils.editdate(localforecasttime)    # date only as "May 1"
-        if not timename  :                          # Usually have "Tueseday evening", etc. from NWS
+        if timename is None  :                      # Usually have "Tueseday evening", etc. from NWS
             timename = msgutils.edittime(localforecasttime) # if not, use actual time
         s = timename + ", " + s                     # prefix it to date
         return("%s: %s" % (s, self.forecasttext))   # human-readable string
@@ -182,7 +182,7 @@ class nwsxml(object) :
             dwmlitem = tree
         else :
             dwmlitem = self._find(tree,("dwml",))           # should be Digital Weather Markup Language
-        if not dwmlitem :                                   # This isn't a valid weather report
+        if dwmlitem is None :                               # This isn't a valid weather report
             msg = "Weather forecast not found"              # note problem
             titleitem = tree.find("title")                  # probably HTML
             if titleitem :                                  # pull title from HTML if present
@@ -382,7 +382,7 @@ def getziplatlong(zip, verbose=False) :
         latlon = gettextitem(tree, "latLonList")# look for lat lon item
         #   Format of latLon is number, number
         matches = NWSZIPRE.match(latlon)        # looking for 123.45,-345.23
-        if not matches :
+        if matches is None:
             raise RuntimeError("ZIP code lookup found no result.")
         lat = matches.group(1)
         lon = matches.group(2)
