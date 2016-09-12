@@ -118,10 +118,10 @@ Running the program:
 
 Main options:
 
-  -h, --help            show help message and exit
-  --ryrypat             Prints RYRYRYRY... forever, for testing
-  --alphapat            Prints ABCDEFG... forever, for testing
-  --verbose             More debug output from program
+   -h, --help            show help message and exit
+   --ryrypat             Prints RYRYRYRY... forever, for testing
+   --alphapat            Prints ABCDEFG... forever, for testing
+   --verbose             More debug output from program
 
 With no options, the program will send a Reuters news feed to the
 first available serial port at 45.45 baud in Baudot.
@@ -134,24 +134,25 @@ default values.
 
 The most important configuration options are in the [teletype] section:
 
-   [teletype]                  # Machine params
-   #   Serial port - either /dev/usbxxx on Linux, or number (1=COM1:, etc) on Windows
-   # port: 2
-   #   Baud rate - Our USB interface, when set to 600 baud, runs at 45 baud.
-   baud: 600
+    [teletype]                  # Machine params
+    #   Serial port - either /dev/usbxxx on Linux, or number (1=COM1:, etc) on Windows
+    #   Or TEST, for a demo without a real Teletype connected.
+    # port: 2
+    #   Baud rate - Our USB interface, when set to 600 baud, runs at 45 baud.
+    baud: 600
 
 Those have to be right or nothing useful will happen.  "baud" should
 be set to 45 for a 60-speed machine on a classic PC serial port.
 We use 600 baud with our specially configured USB to serial converter.
 
-   #    Typebar character set: USTTY, ITA2, or FRACTIONS 
-   charset: USTTY
+    #    Typebar character set: USTTY, ITA2, or FRACTIONS 
+    charset: USTTY
 
 Most Model 15 and 28 machines are USTTY.  Western Union machines
 may be ITA2. 
 
-   #   Keyboard - true if keyboard present on TTY.  False for RO machines.
-   keyboard: True
+    #   Keyboard - true if keyboard present on TTY.  False for RO machines.
+    keyboard: True
  
 If a keyboard is configured, the Teletype (not the computer) will prompt:
 
