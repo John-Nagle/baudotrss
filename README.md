@@ -86,7 +86,7 @@ in the [teletype] section.  Use "configsample.cfg" as a prototype and edit it.
 If you use a port name of "TEST", the program will print to the computer console
 window and accept input from it.  This allows test operation without a real Teletype.
 
-Installation:
+Installation (Linux)
 	
     Unpack distribution into an empty directory.
 
@@ -104,6 +104,17 @@ The "runbaudotrss.sh" script is a convenience for running
 the program from a startup icon.
 
     Usage: baudotrss.py [options] [configfiles] [feedurls]
+    
+    
+    
+Installation (Windows 7) (May work on Windows XP; untested)
+
+    Download "baudotrss.exe". No Python installation is required.
+    
+Running the program:
+
+    baudotrss.exe [options] [configfiles] [feedurls]
+    
 
 Main options:
 
@@ -124,7 +135,7 @@ default values.
 The most important configuration options are in the [teletype] section:
 
    [teletype]                  # Machine params
-   #   Serial port - either /dev/usbxxx on Linux, or number (0=COM1:, etc) on Windows
+   #   Serial port - either /dev/usbxxx on Linux, or number (1=COM1:, etc) on Windows
    # port: 2
    #   Baud rate - Our USB interface, when set to 600 baud, runs at 45 baud.
    baud: 600
