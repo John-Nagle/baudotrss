@@ -33,17 +33,18 @@ import encodings.idna                           # force this in for Pyinstaller.
 #
 #   get_script_dir 
 #
-def get_script_dir(follow_symlinks=True):
+def get_script_dir():
     """
     Get directory from which script or program is executing
     """
     if getattr(sys, 'frozen', False): # py2exe, PyInstaller, cx_Freeze
-        path = os.path.abspath(sys.executable)
-    else:
-        path = inspect.getabsfile(get_script_dir)
-    if follow_symlinks:
+        path = sys._MEIPASS
         path = os.path.realpath(path)
-    return os.path.dirname(path)
+        return(path)
+    else:                                   # not frozen
+        path = inspect.getabsfile(get_script_dir)
+        path = os.path.realpath(path)
+        return os.path.dirname(path)
 
 
 #
@@ -93,6 +94,7 @@ def main() :
     try:         
         #   Process config files if present.
         #   There is a default config file, which can be overridden.
+        import pkgutil
         configfiles = [get_script_dir() + "/" + DEFAULTCONFIG] # default config lives with program
         feedurls = []
         for arg in args :                                   # file args
