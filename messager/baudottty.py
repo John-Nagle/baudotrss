@@ -15,7 +15,7 @@ import re
 import threading
 import time
 import dummyteletype
-assert(serial.VERSION.split('.') >= ['2','4'])    # ***TEMP*** should be 2.5, but PySerial has wrong version string.
+#### assert(serial.VERSION.split('.') >= ['2','4'])    # ***TEMP*** should be 2.5, but PySerial has wrong version string.
 #
 #    Constants
 #

@@ -108,7 +108,7 @@ class Newsfeed(feedmanager.Feed) :
         self.expirationsecs = 60*60*24*2                # expire after not seen for 2 days
         self.maxage = 60*60*24*NEWSMAXAGEDAYS           # don't show items older than this
         ####print(feedparser._HTMLSanitizer.acceptable_elements)    # ***TEMP***
-        feedparser._HTMLSanitizer.acceptable_elements = self.acceptable_elements
+        ######feedparser._HTMLSanitizer.acceptable_elements = self.acceptable_elements
         ####print(feedparser._HTMLSanitizer.acceptable_elements)    # ***TEMP***
         ####self.expirationsecs = 60                        # ***TEMP DEBUG***
 
